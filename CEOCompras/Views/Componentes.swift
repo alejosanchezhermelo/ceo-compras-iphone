@@ -16,41 +16,48 @@ extension Color {
     })
 }
 
-/// Etiqueta de color, como los "tag" de la web.
+/// Etiqueta de color, como los "tag" de la web (`.tag` + `.tp` / `.tpa` / `.te` / `.to`).
 struct Etiqueta: View {
     let texto: String
     let fondo: Color
     let color: Color
+    var borde: Color = .clear
 
     var body: some View {
         Text(texto)
-            .font(.caption.weight(.semibold))
+            .font(T.sans(11, .medium))
             .lineLimit(1)
             .padding(.horizontal, 8)
-            .padding(.vertical, 3)
+            .padding(.vertical, 2)
             .background(fondo, in: Capsule())
+            .overlay(Capsule().stroke(borde, lineWidth: 1))
             .foregroundStyle(color)
     }
 
+    /// Mismos colores que `cardOC` de la PWA: Pendiente ámbar, Parcial rojo, Entregado verde.
     static func estado(_ oc: OC) -> Etiqueta {
         switch oc.estado {
-        case "entregado": return Etiqueta(texto: "Entregado", fondo: Color(hex: 0xD1FAE5), color: Color(hex: 0x065F46))
-        case "parcial": return Etiqueta(texto: "Entrega parcial", fondo: Color(hex: 0xFEF3C7), color: Color(hex: 0x92400E))
-        default: return Etiqueta(texto: "Pendiente", fondo: Color(hex: 0xFEE2E2), color: Color(hex: 0x991B1B))
+        case "entregado": return Etiqueta(texto: "Entregado", fondo: T.gnL, color: T.gn, borde: T.gnM)
+        case "parcial": return Etiqueta(texto: "Entrega parcial", fondo: T.rdL, color: T.rd, borde: T.rdM)
+        default: return Etiqueta(texto: "Pendiente", fondo: T.amL, color: T.am, borde: T.amM)
         }
     }
 
     static func urgente() -> Etiqueta {
-        Etiqueta(texto: "🔴 URGENTE", fondo: Color(hex: 0xFEE2E2), color: Color(hex: 0xB91C1C))
+        Etiqueta(texto: "🔴 URGENTE", fondo: T.urgente, color: .white, borde: T.urgente)
     }
 
     static func obra(_ nombre: String) -> Etiqueta {
-        Etiqueta(texto: nombre, fondo: Color(hex: 0xE6EDF7), color: Color(hex: 0x1A3E6F))
+        Etiqueta(texto: nombre, fondo: T.blL, color: T.bl, borde: T.blM)
     }
 
     static func factura(_ f: FacturaOC) -> Etiqueta {
         Etiqueta(texto: "🧾 Fact. \(f.num)" + (f.importe.map { " · " + Formato.pesos($0) } ?? ""),
-                 fondo: Color(hex: 0xD1FAE5), color: Color(hex: 0x065F46))
+                 fondo: T.gnL, color: T.gn, borde: T.gnM)
+    }
+
+    static func solicitud() -> Etiqueta {
+        Etiqueta(texto: "Pendiente de OC", fondo: T.ppL, color: T.pp, borde: T.ppM)
     }
 }
 

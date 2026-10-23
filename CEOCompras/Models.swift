@@ -13,7 +13,47 @@ struct ItemOC: Identifiable, Hashable {
 struct FacturaOC: Hashable {
     let num: String
     let importe: Double?
+    var cuit: String = ""
+    var total: Double? = nil
+    var ts: Double? = nil
+
+    /// Como se guarda en Firebase (`{num, importe, cuit, total, ts}`); sin importe si no lo tenía.
+    var diccionario: [String: Any] {
+        var d: [String: Any] = ["num": num, "cuit": cuit]
+        if let importe { d["importe"] = importe }
+        if let total { d["total"] = total }
+        if let ts { d["ts"] = Int64(ts) }
+        return d
+    }
 }
+
+/// Solicitud de material que manda un encargado (`solicitudes/<id>`).
+struct Solicitud: Identifiable, Hashable {
+    let id: String
+    let encargado: String
+    let obra: String
+    let texto: String
+    let notas: String
+    let estado: String
+    let comentarioCompras: String
+    let ts: Double
+
+    init?(clave: String, _ valor: Any) {
+        guard let d = valor as? [String: Any] else { return nil }
+        let i = texto_(d["id"])
+        id = i.isEmpty ? clave : i
+        encargado = texto_(d["encargado"])
+        obra = texto_(d["obra"])
+        texto = texto_(d["texto"])
+        notas = texto_(d["notas"])
+        estado = texto_(d["estado"])
+        comentarioCompras = texto_(d["comentarioCompras"])
+        ts = numero(d["ts"]) ?? 0
+    }
+}
+
+/// Alias de `texto()` para usar dentro de structs que tienen un campo llamado `texto`.
+func texto_(_ v: Any?) -> String { texto(v) }
 
 struct NotaInterna: Hashable {
     let txt: String
@@ -36,6 +76,8 @@ struct OC: Identifiable, Hashable {
     let estado: String
     let obra: String
     let proveedor: String
+    /// `provId` guardado (formato nuevo); nil en OC de formato viejo.
+    let provIdGuardado: String?
     let responsable: String
     let rubro: String
     let fecha: String
@@ -64,6 +106,8 @@ struct OC: Identifiable, Hashable {
         estado = texto(d["estado"])
         obra = texto(d["obra"])
         proveedor = texto(d["proveedor"])
+        let pid = texto(d["provId"])
+        provIdGuardado = pid.isEmpty ? nil : pid
         responsable = texto(d["responsable"])
         rubro = texto(d["rubro"])
         fecha = texto(d["fecha"])
@@ -84,7 +128,8 @@ struct OC: Identifiable, Hashable {
 
         func factura(_ v: Any) -> FacturaOC? {
             guard let f = v as? [String: Any] else { return nil }
-            return FacturaOC(num: texto(f["num"]), importe: numero(f["importe"]))
+            return FacturaOC(num: texto(f["num"]), importe: numero(f["importe"]), cuit: texto(f["cuit"]),
+                             total: numero(f["total"]), ts: numero(f["ts"]))
         }
         tieneFactura = verdadero(d["factura"])
         if tieneFactura, let f = d["factura"].flatMap(factura) {

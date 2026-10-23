@@ -8,8 +8,8 @@ options:
 settings:
   base:
     SWIFT_VERSION: "5.0"
-    MARKETING_VERSION: "0.4"
-    CURRENT_PROJECT_VERSION: "4"
+    MARKETING_VERSION: "0.5"
+    CURRENT_PROJECT_VERSION: "5"
     TARGETED_DEVICE_FAMILY: "1"
     CODE_SIGN_STYLE: Manual
     DEVELOPMENT_TEAM: ""
@@ -30,6 +30,15 @@ targets:
         UISupportedInterfaceOrientations:
           - UIInterfaceOrientationPortrait
         UIRequiresFullScreen: true
+        UIAppFonts:
+          - CEOSyne-Bold.ttf
+          - CEOSyne-SemiBold.ttf
+          - CEODMSans-Regular.ttf
+          - CEODMSans-Medium.ttf
+          - CEODMSans-SemiBold.ttf
+          - CEODMSans-Bold.ttf
+          - CEODMMono-Regular.ttf
+          - CEODMMono-Medium.ttf
         NSFaceIDUsageDescription: Para entrar a la app con tu cara, sin escribir la contraseña.
         ITSAppUsesNonExemptEncryption: false
     settings:

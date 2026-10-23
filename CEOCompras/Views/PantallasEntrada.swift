@@ -7,55 +7,70 @@ struct PantallaLogin: View {
     @State private var entrando = false
 
     var body: some View {
-        VStack(spacing: 18) {
+        VStack {
             Spacer()
-            Image("Logo")
-                .resizable()
-                .scaledToFit()
-                .frame(width: 150, height: 150)
-                .clipShape(RoundedRectangle(cornerRadius: 28))
-            Text("Compras").font(.title.bold())
+            // Tarjeta de la PWA (`.lc`): cuadrado azul, "Pedidos" y subtítulo
+            VStack(spacing: 0) {
+                RoundedRectangle(cornerRadius: 12)
+                    .fill(T.bl)
+                    .frame(width: 52, height: 52)
+                    .overlay(Image(systemName: "list.clipboard.fill").font(.system(size: 24)).foregroundStyle(.white))
+                    .padding(.bottom, 18)
+                Text("Pedidos").font(T.syne(22)).foregroundStyle(T.tx)
+                Text("Sistema de seguimiento de órdenes de compra")
+                    .font(T.sans(13)).foregroundStyle(T.tx2).multilineTextAlignment(.center)
+                    .padding(.top, 4).padding(.bottom, 24)
 
-            if store.faceIDActivado {
-                Button {
-                    Task { await store.entrarConFaceID() }
-                } label: {
-                    Label("Entrar con Face ID", systemImage: "faceid").frame(maxWidth: .infinity)
+                if store.faceIDActivado {
+                    Button {
+                        Task { await store.entrarConFaceID() }
+                    } label: {
+                        Label("Entrar con Face ID", systemImage: "faceid").font(T.sans(14, .semibold))
+                    }
+                    .buttonStyle(BotonGrande(color: T.bl))
+                    HStack(spacing: 8) {
+                        Rectangle().fill(T.bd).frame(height: 1)
+                        Text("o").font(T.sans(11)).foregroundStyle(T.tx3)
+                        Rectangle().fill(T.bd).frame(height: 1)
+                    }
+                    .padding(.vertical, 12)
                 }
-                .buttonStyle(.borderedProminent)
-                .controlSize(.large)
-                .padding(.top, 8)
-            }
 
-            SecureField("Contraseña de Compras", text: $password)
-                .textContentType(.password)
-                .submitLabel(.go)
-                .onSubmit(entrar)
-                .padding(12)
-                .background(Color(.secondarySystemBackground), in: RoundedRectangle(cornerRadius: 10))
-
-            Button(action: entrar) {
-                Group {
-                    if entrando { ProgressView() } else { Text("Entrar") }
+                VStack(alignment: .leading, spacing: 5) {
+                    Text("Contraseña de Compras").font(T.sans(12, .medium)).foregroundStyle(T.tx2)
+                    SecureField("", text: $password)
+                        .textContentType(.password)
+                        .submitLabel(.go)
+                        .onSubmit(entrar)
+                        .campoPWA()
                 }
-                .frame(maxWidth: .infinity)
-            }
-            .buttonStyle(.bordered)
-            .controlSize(.large)
-            .disabled(password.isEmpty || entrando)
+                .padding(.bottom, 12)
 
-            if let m = store.mensajeLogin {
-                Text(m).font(.footnote).foregroundStyle(.red).multilineTextAlignment(.center)
+                Button(action: entrar) {
+                    Group {
+                        if entrando { ProgressView().tint(.white) } else { Text("Entrar") }
+                    }
+                }
+                .buttonStyle(BotonGrande(color: store.faceIDActivado ? T.gn : T.bl))
+                .disabled(password.isEmpty || entrando)
+
+                if let m = store.mensajeLogin {
+                    Text(m).font(T.sans(12)).foregroundStyle(T.rd).multilineTextAlignment(.center).padding(.top, 10)
+                }
+                if let m = store.mensajeConexion {
+                    Text(m).font(T.sans(12)).foregroundStyle(T.tx3).multilineTextAlignment(.center).padding(.top, 6)
+                }
             }
-            if let m = store.mensajeConexion {
-                Text(m).font(.footnote).foregroundStyle(.secondary).multilineTextAlignment(.center)
-            }
+            .padding(.horizontal, 26).padding(.vertical, 32)
+            .background(T.sf, in: RoundedRectangle(cornerRadius: 12))
+            .overlay(RoundedRectangle(cornerRadius: 12).stroke(T.bd, lineWidth: 1))
+            .shadow(color: .black.opacity(0.12), radius: 12, y: 4)
+            .padding(.horizontal, 24)
             Spacer()
             Spacer()
         }
-        .padding(28)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(Color(.systemBackground))
+        .background(T.bg)
     }
 
     private func entrar() {
@@ -139,10 +154,7 @@ struct PantallaAjustes: View {
                     } else {
                         Text("Face ID no está disponible en este iPhone.").foregroundStyle(.secondary)
                     }
-                    Button("Bloquear ahora") {
-                        dismiss()
-                        store.bloquear()
-                    }
+                    Button("Bloquear ahora") { store.bloquear() }
                 }
 
                 Section {
@@ -185,11 +197,11 @@ struct PantallaAjustes: View {
                          : "Con los datos reales la app es solo de consulta. Crear y editar OC se prueba en el modo prueba.")
                 }
             }
-            .navigationTitle("Ajustes")
+            .scrollContentBackground(.hidden)
+            .background(T.bg)
+            .font(T.sans(15))
             .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .confirmationAction) { Button("Listo") { dismiss() } }
-            }
+            .toolbar { ToolbarItem(placement: .topBarLeading) { EncabezadoPedidos() } }
         }
     }
 

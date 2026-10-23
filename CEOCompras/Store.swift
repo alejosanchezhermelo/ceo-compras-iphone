@@ -17,6 +17,9 @@ final class Store {
     var obras: [String] = []
     var encargados: [String] = []
     var proveedores: [String] = []
+    var solicitudes: [Solicitud] = []
+    /// Todo el historial, del más nuevo al más viejo (pestaña Actividad).
+    var eventos: [EventoOC] = []
     var nextOCNum = 858
     var conectado = false
     var mensajeConexion: String?
@@ -27,17 +30,17 @@ final class Store {
     var aviso: String?
 
     /// Nodos que se leen (dentro de la base real o de la de prueba).
-    static let nodos = ["config", "ordenes", "obras", "encargados", "historial", "obrasData", "provData", "proveedores"]
+    static let nodos = ["config", "ordenes", "obras", "encargados", "historial", "obrasData", "provData", "proveedores", "solicitudes"]
     /// Los contactos de WhatsApp se leen siempre de la base real (en prueba no se manda nada).
     static let nodoContactos = "waContacts"
     /// Para guardar, todos estos tienen que haber llegado en vivo (evita repetir el bug de duplicados de agosto).
     static let nodosParaGuardar: Set<String> = ["config", "ordenes", "obrasData", "provData", "proveedores"]
 
-    @ObservationIgnored private var arboles: [String: Any] = [:]
-    @ObservationIgnored private var waContacts: [[String: Any]] = []
+    @ObservationIgnored var arboles: [String: Any] = [:]
+    @ObservationIgnored var waContacts: [[String: Any]] = []
     @ObservationIgnored private var arbolContactos: Any?
     @ObservationIgnored private var nodosEnVivo = Set<String>()
-    @ObservationIgnored private var generacion = 0
+    @ObservationIgnored var generacion = 0
     @ObservationIgnored private var configPassword = ""
     @ObservationIgnored private var configCargado = false
     @ObservationIgnored private var configEnVivo = false
@@ -54,8 +57,8 @@ final class Store {
     }
 
     /// Dónde se lee y escribe: "pruebas-iphone/" en modo prueba, la raíz en datos reales.
-    private var prefijo: String { modoPrueba ? "pruebas-iphone/" : "" }
-    private var base: String { modoPrueba ? "pruebas-iphone" : "" }
+    var prefijo: String { modoPrueba ? "pruebas-iphone/" : "" }
+    var base: String { modoPrueba ? "pruebas-iphone" : "" }
 
     var puedeEditar: Bool { modoPrueba || Config.escrituraReal }
 
@@ -95,6 +98,8 @@ final class Store {
         obras = []
         encargados = []
         proveedores = []
+        solicitudes = []
+        eventos = []
         conectado = false
         cargarCache()
         conectar()
@@ -159,6 +164,10 @@ final class Store {
             }
             for k in g.keys { g[k]?.sort { $0.ts < $1.ts } }
             eventosPorOC = g
+            eventos = (a as? [String: Any] ?? [:]).compactMap { k, v -> EventoOC? in
+                guard let e = v as? [String: Any] else { return nil }
+                return EventoOC(id: k, ocId: texto(e["ocId"]), tipo: texto(e["tipo"]), texto: texto(e["texto"]), ts: numero(e["ts"]) ?? 0)
+            }.sorted { $0.ts > $1.ts }
         case "config":
             let d = a as? [String: Any] ?? [:]
             configPassword = texto(d["password"])
@@ -183,6 +192,9 @@ final class Store {
             encargados = JSONTree.lista(a).map { texto($0) }.filter { !$0.isEmpty && vistos.insert($0).inserted }
         case "proveedores":
             proveedores = Store.sinRepetir(JSONTree.lista(a).map { texto($0) })
+        case "solicitudes":
+            solicitudes = (a as? [String: Any] ?? [:]).compactMap { Solicitud(clave: $0.key, $0.value) }
+                .filter { $0.estado != "archivada" }.sorted { $0.ts > $1.ts }
         default:
             break   // obrasData y provData se consultan directo al guardar
         }
@@ -315,7 +327,7 @@ final class Store {
     }
 
     /// Guarda una OC nueva o editada. Devuelve si salió bien y el mensaje para mostrar.
-    func guardar(_ b: BorradorOC, editando: OC?) async -> (ok: Bool, mensaje: String) {
+    func guardar(_ b: BorradorOC, editando: OC?, desdeSolicitud sol: Solicitud? = nil) async -> (ok: Bool, mensaje: String) {
         if let e = validar(b, editando: editando) { return (false, e) }
         let gen = generacion
         let enPrueba = modoPrueba
@@ -370,8 +382,15 @@ final class Store {
                     "estado": "pendiente", "items": items, "comentario": "", "ts": ahora,
                 ]
                 if let n = numPDF as? Int { oc["numOCPDF"] = n }
+                if let sol { oc["solRef"] = sol.encargado }
                 cambios["ordenes/\(ocId)"] = oc
                 textoHistorial = "📦 OC \(num) creada por Compras → \(resp) (\(obra))"
+                if let sol {
+                    // modalDesdeSol de la web: la solicitud pasa a "convertida" y queda anotado
+                    cambios["solicitudes/\(sol.id)/estado"] = "convertida"
+                    let (hs, es) = evento("📋 Solicitud de \(sol.encargado) convertida en OC \(num)", tipo: "c", ocId: nil, ts: ahora + 1)
+                    cambios[hs] = es
+                }
             }
             let hid = IDs.push()
             cambios["historial/\(hid)"] = ["id": hid, "tipo": "c", "texto": textoHistorial, "ocId": ocId, "ts": ahora]
@@ -395,7 +414,7 @@ final class Store {
     }
 
     /// `getObraId` / `getProvId` de la web: busca por nombre (sin mirar mayúsculas); si no existe, lo crea.
-    private func idDe(_ nodo: String, _ nombre: String, prefijoId: String, _ cambios: inout [String: Any],
+    func idDe(_ nodo: String, _ nombre: String, prefijoId: String, _ cambios: inout [String: Any],
                       nuevo: (String) -> [String: Any]) -> String {
         if nombre.isEmpty { return "" }
         let buscado = nombre.lowercased()
@@ -420,7 +439,7 @@ final class Store {
     }
 
     /// `subirNextNum` de la web: si el número usado es >= al contador, el contador pasa a número + 1.
-    private func subirProximoNumero(_ num: String, _ p: String) async throws {
+    func subirProximoNumero(_ num: String, _ p: String) async throws {
         guard let v = Int(num), v > 0 else { return }
         for _ in 0..<4 {
             let (actual, huella) = try await Firebase.shared.leerConHuella(p + "config/nextOCNum")

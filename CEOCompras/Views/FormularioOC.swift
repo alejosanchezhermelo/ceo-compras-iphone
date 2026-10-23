@@ -5,6 +5,7 @@ struct FormularioOC: View {
     @Environment(Store.self) private var store
     @Environment(\.dismiss) private var dismiss
     let editando: OC?
+    var solicitud: Solicitud? = nil
 
     @State private var b: BorradorOC
     @State private var guardando = false
@@ -12,9 +13,17 @@ struct FormularioOC: View {
     @State private var preguntarRepetido = false
     @FocusState private var enProveedor: Bool
 
-    init(editando: OC?, numeroSugerido: Int) {
+    init(editando: OC?, numeroSugerido: Int, solicitud: Solicitud? = nil) {
         self.editando = editando
-        _b = State(initialValue: editando.map { BorradorOC(editando: $0) } ?? BorradorOC(numeroSugerido: numeroSugerido))
+        self.solicitud = solicitud
+        var b = editando.map { BorradorOC(editando: $0) } ?? BorradorOC(numeroSugerido: numeroSugerido)
+        if let s = solicitud, editando == nil {
+            // modalDesdeSol de la web: obra, encargado y notas de la solicitud
+            b.obra = s.obra
+            b.encargado = s.encargado
+            b.notas = s.notas
+        }
+        _b = State(initialValue: b)
     }
 
     /// Obras activas; si la OC que se edita tiene una obra archivada, se agrega para no perderla.
@@ -45,6 +54,12 @@ struct FormularioOC: View {
                               systemImage: "testtube.2")
                             .font(.footnote.weight(.semibold))
                             .foregroundStyle(.red)
+                    }
+                }
+
+                if let s = solicitud {
+                    Section("Solicitud de \(s.encargado)") {
+                        Text(s.texto).font(T.sans(13)).foregroundStyle(T.pp)
                     }
                 }
 
@@ -127,7 +142,10 @@ struct FormularioOC: View {
                 }
 
             }
-            .navigationTitle(editando.map { "Editar OC \($0.num)" } ?? "Nueva OC")
+            .scrollContentBackground(.hidden)
+            .background(T.bg)
+            .font(T.sans(15))
+            .navigationTitle(editando.map { "Editar OC \($0.num)" } ?? "Nueva orden de compra")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
@@ -172,7 +190,7 @@ struct FormularioOC: View {
     private func guardarYa() {
         guardando = true
         Task {
-            let r = await store.guardar(b, editando: editando)
+            let r = await store.guardar(b, editando: editando, desdeSolicitud: solicitud)
             guardando = false
             if r.ok {
                 store.aviso = r.mensaje
