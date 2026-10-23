@@ -24,6 +24,17 @@ enum PDFOC {
             fecha = oc.fecha.isEmpty ? Formato.hoy() : oc.fecha.split(separator: "-").reversed().joined(separator: "/")
             items = oc.items
         }
+
+        /// Para el PDF "OC + factura": la web usa `o.numOCPDF || o.num` (sin registrar nada).
+        init(paraCombo oc: OC) {
+            num = oc.numOCPDF ?? Int(oc.num) ?? 0
+            proveedor = oc.proveedor
+            obra = oc.obra
+            responsable = oc.responsable
+            notas = oc.notas
+            fecha = oc.fecha.isEmpty ? Formato.hoy() : oc.fecha.split(separator: "-").reversed().joined(separator: "/")
+            items = oc.items
+        }
     }
 
     enum Falla: LocalizedError {
@@ -31,7 +42,7 @@ enum PDFOC {
         var errorDescription: String? { "Esta OC todavía no tiene número de PDF. Generala una vez desde la PC." }
     }
 
-    private static let mm: CGFloat = 72 / 25.4
+    static let mm: CGFloat = 72 / 25.4
     private static let azul = UIColor(red: 26 / 255, green: 62 / 255, blue: 111 / 255, alpha: 1)
 
     /// Arma el PDF y lo deja en un archivo temporal "OC <num>.pdf" (mismo nombre que la web).
@@ -74,7 +85,7 @@ enum PDFOC {
         }
     }
 
-    private static func dibujar(_ d: Datos, _ ctx: UIGraphicsPDFRendererContext) {
+    static func dibujar(_ d: Datos, _ ctx: UIGraphicsPDFRendererContext) {
         let numStr = String(format: "%07d", d.num)
         escribir("CEO CONSTRUCCIONES SRL", 20, 18, size: 14, negrita: true)
         escribir("CUIT: 30-70732992-7  |  Ingresos Brutos: 021-309245-4", 20, 24, size: 9)

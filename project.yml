@@ -8,8 +8,8 @@ options:
 settings:
   base:
     SWIFT_VERSION: "5.0"
-    MARKETING_VERSION: "0.7"
-    CURRENT_PROJECT_VERSION: "7"
+    MARKETING_VERSION: "0.8"
+    CURRENT_PROJECT_VERSION: "8"
     TARGETED_DEVICE_FAMILY: "1"
     CODE_SIGN_STYLE: Manual
     DEVELOPMENT_TEAM: ""
@@ -39,6 +39,7 @@ targets:
           - CEODMSans-Bold.ttf
           - CEODMMono-Regular.ttf
           - CEODMMono-Medium.ttf
+        NSCameraUsageDescription: Para leer el QR de AFIP de las facturas.
         NSFaceIDUsageDescription: Para entrar a la app con tu cara, sin escribir la contraseña.
         ITSAppUsesNonExemptEncryption: false
     settings:

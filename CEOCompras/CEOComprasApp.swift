@@ -53,18 +53,7 @@ struct Raiz: View {
     var body: some View {
         ZStack {
             if store.haEntrado {
-                TabView {
-                    ListaOC()
-                        .tabItem { Label("ÓRDENES", systemImage: "shippingbox") }
-                    PantallaActividad()
-                        .tabItem { Label("ACTIVIDAD", systemImage: "clock") }
-                    PantallaProveedores()
-                        .tabItem { Label("PROVEEDORES", systemImage: "trophy") }
-                    PantallaPrecios()
-                        .tabItem { Label("PRECIOS", systemImage: "dollarsign.circle") }
-                    PantallaAjustes()
-                        .tabItem { Label("AJUSTES", systemImage: "gearshape") }
-                }
+                ContenidoPestanas()
             }
             switch store.fase {
             case .adentro: EmptyView()
@@ -102,5 +91,57 @@ struct Raiz: View {
         } message: {
             Text("Abrís la app, mirás el teléfono y entrás. Se puede cambiar en Ajustes.")
         }
+    }
+}
+
+
+/// Las 6 pestañas de la PWA, en el mismo orden, con una barra propia abajo
+/// (con el TabView común el iPhone mete la sexta en un menú "Más").
+struct ContenidoPestanas: View {
+    @State private var pestana = 0
+    @State private var tecladoAbierto = false
+
+    private let items: [(String, String)] = [
+        ("ÓRDENES", "shippingbox"), ("ACTIVIDAD", "clock"), ("AJUSTES", "gearshape"),
+        ("PRECIOS", "dollarsign.circle"), ("PROVEEDORES", "trophy"), ("FACTURAS", "doc.text.viewfinder"),
+    ]
+
+    var body: some View {
+        TabView(selection: $pestana) {
+            ListaOC().tag(0).toolbar(.hidden, for: .tabBar)
+            PantallaActividad().tag(1).toolbar(.hidden, for: .tabBar)
+            PantallaAjustes().tag(2).toolbar(.hidden, for: .tabBar)
+            PantallaPrecios().tag(3).toolbar(.hidden, for: .tabBar)
+            PantallaProveedores().tag(4).toolbar(.hidden, for: .tabBar)
+            PantallaFacturas().tag(5).toolbar(.hidden, for: .tabBar)
+        }
+        .safeAreaInset(edge: .bottom, spacing: 0) {
+            if !tecladoAbierto { barra }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillShowNotification)) { _ in tecladoAbierto = true }
+        .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillHideNotification)) { _ in tecladoAbierto = false }
+    }
+
+    private var barra: some View {
+        HStack(spacing: 0) {
+            ForEach(items.indices, id: \.self) { i in
+                let elegida = pestana == i
+                Button { pestana = i } label: {
+                    VStack(spacing: 3) {
+                        Image(systemName: items[i].1).font(.system(size: 18, weight: elegida ? .semibold : .regular))
+                        Text(items[i].0).font(T.mono(8, .medium)).lineLimit(1).minimumScaleFactor(0.7)
+                    }
+                    .foregroundStyle(elegida ? T.bl : T.tx3)
+                    .frame(maxWidth: .infinity)
+                    .padding(.top, 7).padding(.bottom, 4)
+                    .background(alignment: .top) {
+                        if elegida { Rectangle().fill(T.bl).frame(height: 2) }
+                    }
+                }
+                .buttonStyle(.plain)
+            }
+        }
+        .background(T.sf.ignoresSafeArea(edges: .bottom))
+        .overlay(alignment: .top) { Rectangle().fill(T.bd).frame(height: 1) }
     }
 }
