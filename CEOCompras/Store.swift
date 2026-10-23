@@ -214,7 +214,9 @@ final class Store {
             proveedores = Store.sinRepetir(JSONTree.lista(a).map { texto($0) })
         case "solicitudes":
             solicitudes = (a as? [String: Any] ?? [:]).compactMap { Solicitud(clave: $0.key, $0.value) }
-                .filter { $0.estado != "archivada" }.sorted { $0.ts > $1.ts }
+                // La web muestra también las "convertida" (ya tienen OC); en el iPhone se esconden
+                // a pedido de Alejo (23/10): al generar la OC desde la solicitud, la solicitud desaparece.
+                .filter { $0.estado != "archivada" && $0.estado != "convertida" }.sorted { $0.ts > $1.ts }
         case "provData":
             fichasProveedores = (a as? [String: Any] ?? [:]).compactMap { FichaProveedor(clave: $0.key, $0.value) }
                 .sorted { $0.nombre.localizedCompare($1.nombre) == .orderedAscending }
