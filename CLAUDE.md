@@ -97,3 +97,4 @@ Repo PÚBLICO: https://github.com/alejosanchezhermelo/ceo-compras-iphone (rama `
 - Grupo A `StoreAcciones.swift` · Grupo B `StoreGrupoB.swift` · Facturas QR `StoreFacturas.swift` + `LectorQR.swift` + `Views/PantallaFacturas.swift`.
 - Reglas de la web portadas: `Facturas.swift` (importe, N° combinado, CUIT). Listas guardadas enteras por la web → `editarLista` con ETag.
 - OJO: no repetir nombres de archivo entre carpetas (Xcode falla: pasó con Facturas.swift en v0.8).
+- OJO: NO usar TabView con 6 pestañas (iOS arma un menú "More" escondido; pasó en v0.8-0.10). Las pantallas van en un ZStack en `ContenidoPestanas`.
