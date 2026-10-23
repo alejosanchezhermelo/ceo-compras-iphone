@@ -32,6 +32,10 @@ actor Firebase {
         let v = URLSessionConfiguration.default
         v.timeoutIntervalForRequest = 90          // Firebase manda "keep-alive" cada ~30 s
         v.timeoutIntervalForResource = 60 * 60 * 24
+        // Firebase solo habla HTTP/1.1 (verificado 2026-10-23): cada escucha en vivo ocupa una conexión
+        // entera, e iOS por defecto permite 6 por servidor. Con 9 escuchas, 3 quedaban esperando para
+        // siempre (proveedores, provData, waContacts) y no se podía guardar.
+        v.httpMaximumConnectionsPerHost = 16
         sesionEnVivo = URLSession(configuration: v)
     }
 

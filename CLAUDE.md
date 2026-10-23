@@ -29,6 +29,23 @@ Repo PÚBLICO: https://github.com/alejosanchezhermelo/ceo-compras-iphone (rama `
 - Alejo usa el iPhone para ver/crear/editar OC y mandarlas por WhatsApp. Facturas, conciliación y
   Excel quedan en la PC (no portarlos).
 
+## Etapa 2 (crear/editar OC) — EN MODO PRUEBA (2026-10-23)
+- Interruptor "Modo prueba" en Ajustes: lee y escribe en `pruebas-iphone/` (copia de la base real armada el
+  23/10 14:58; foto inicial en `App-Compras/respaldos/*pruebas-iphone-inicial.json`). Franja roja.
+- Con datos reales sigue SOLO LECTURA: `Config.escrituraReal = false`. Pasarlo a true SOLO con OK de Alejo,
+  después de que el verificador dé TODO BIEN, y con backup nuevo.
+- Guardar (`Store.guardar`) = `_doSaveOrden` de la web: proveedor nuevo a la lista (PUT condicional con ETag,
+  reintenta si la PC lo cambió), y en UN solo PATCH multi-ruta: la OC, obrasData/provData si son nuevos
+  (`getObraId`/`getProvId`), evento de historial; después `config/nextOCNum` con ETag. WhatsApp al encargado
+  (CallMeBot, contactos leídos SIEMPRE de `waContacts` real) solo en datos reales.
+- Diferencia a propósito: al editar, el iPhone SÍ guarda la fecha de entrega (la web no: bug de la web).
+- No guarda si no llegaron en vivo config/ordenes/obrasData/provData/proveedores (evita el bug de duplicados).
+- Verificador (solo lectura): script `verificar_prueba.py` (en el scratchpad de la sesión del 23/10; si no
+  está, rehacerlo: compara `pruebas-iphone` contra la foto inicial con las reglas de la web).
+- **LECCIÓN v0.2:** Firebase REST es solo HTTP/1.1 → cada escucha SSE ocupa una conexión; iOS permite 6 por
+  servidor por defecto → con 9 escuchas, 3 quedaban colgadas y nunca se podía guardar (el error salía al pie
+  del formulario y no se veía). Arreglo v0.3: `httpMaximumConnectionsPerHost = 16` y error en alerta.
+
 ## Cómo se conecta (sin SDK de Firebase, por REST) — `Firebase.swift`
 - Base con App Check OBLIGATORIO + reglas `auth != null`. Hacen falta los dos:
   1. Usuario anónimo: `identitytoolkit accounts:signUp` (refresh con `securetoken`), guardado en llavero.

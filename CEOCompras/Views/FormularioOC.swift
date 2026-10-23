@@ -126,11 +126,6 @@ struct FormularioOC: View {
                         .lineLimit(2...6)
                 }
 
-                if let error {
-                    Section {
-                        Text(error).foregroundStyle(.red).font(.footnote)
-                    }
-                }
             }
             .navigationTitle(editando.map { "Editar OC \($0.num)" } ?? "Nueva OC")
             .navigationBarTitleDisplayMode(.inline)
@@ -147,6 +142,12 @@ struct FormularioOC: View {
                 }
             }
             .interactiveDismissDisabled(guardando)
+            // El error va en una ventana: abajo del formulario no se veía (pasó en la prueba de la v0.2).
+            .alert("No se guardó", isPresented: Binding(get: { error != nil }, set: { if !$0 { error = nil } })) {
+                Button("OK", role: .cancel) {}
+            } message: {
+                Text(error ?? "")
+            }
             .confirmationDialog("Ya existe una OC con el número \(b.num.trimmingCharacters(in: .whitespaces)). ¿Guardás igual?",
                                 isPresented: $preguntarRepetido, titleVisibility: .visible) {
                 Button("Guardar igual") { guardarYa() }
