@@ -174,12 +174,21 @@ struct EscanerQR: UIViewControllerRepresentable {
 
     func updateUIViewController(_ vc: DataScannerViewController, context: Context) {}
 
+    /// Al cerrar la cámara se apaga del todo (antes podía quedar trabajando un momento de fondo).
+    static func dismantleUIViewController(_ vc: DataScannerViewController, coordinator: Coordinador) {
+        coordinator.listo = true
+        vc.stopScanning()
+        vc.delegate = nil
+    }
+
     func makeCoordinator() -> Coordinador { Coordinador(alLeer: alLeer) }
 
     @MainActor final class Coordinador: NSObject, DataScannerViewControllerDelegate {
         let alLeer: (String) -> Void
+        var listo = false
         init(alLeer: @escaping (String) -> Void) { self.alLeer = alLeer }
         func dataScanner(_ s: DataScannerViewController, didAdd items: [RecognizedItem], allItems: [RecognizedItem]) {
+            if listo { return }
             for item in items {
                 if case .barcode(let b) = item, let t = b.payloadStringValue { alLeer(t) }
             }

@@ -153,8 +153,9 @@ final class Store {
         }
         arboles[nodo] = JSONTree.aplicar(arboles[nodo], evento: evento, ruta: ruta, dato: dato)
         nodosEnVivo.insert(nodo)
-        conectado = true
-        mensajeConexion = nil
+        // Solo se tocan si cambian: cada cambio redibuja las pantallas que los muestran
+        if !conectado { conectado = true }
+        if mensajeConexion != nil { mensajeConexion = nil }
         reconstruir(nodo, enVivo: true)
         guardarCacheLuego()
     }

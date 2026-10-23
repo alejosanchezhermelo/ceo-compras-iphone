@@ -99,7 +99,6 @@ struct Raiz: View {
 /// (con el TabView común el iPhone mete la sexta en un menú "Más").
 struct ContenidoPestanas: View {
     @State private var pestana = 0
-    @State private var tecladoAbierto = false
 
     private let items: [(String, String)] = [
         ("ÓRDENES", "shippingbox"), ("ACTIVIDAD", "clock"), ("AJUSTES", "gearshape"),
@@ -107,6 +106,15 @@ struct ContenidoPestanas: View {
     ]
 
     var body: some View {
+        // Si el teclado está abierto, la zona segura de abajo crece (más de ~120 puntos): ahí se esconde la barra.
+        // Se mira el tamaño en cada momento (antes se usaban los avisos del teclado, que a veces no llegaban
+        // al volver de la cámara o de imprimir, y la barra quedaba escondida).
+        GeometryReader { g in
+            pestanas(tecladoAbierto: g.safeAreaInsets.bottom > 120)
+        }
+    }
+
+    private func pestanas(tecladoAbierto: Bool) -> some View {
         TabView(selection: $pestana) {
             ListaOC().tag(0).toolbar(.hidden, for: .tabBar)
             PantallaActividad().tag(1).toolbar(.hidden, for: .tabBar)
@@ -118,8 +126,6 @@ struct ContenidoPestanas: View {
         .safeAreaInset(edge: .bottom, spacing: 0) {
             if !tecladoAbierto { barra }
         }
-        .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillShowNotification)) { _ in tecladoAbierto = true }
-        .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillHideNotification)) { _ in tecladoAbierto = false }
     }
 
     private var barra: some View {
