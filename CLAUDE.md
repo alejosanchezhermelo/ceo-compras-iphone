@@ -29,11 +29,11 @@ Repo PÚBLICO: https://github.com/alejosanchezhermelo/ceo-compras-iphone (rama `
 - Alejo usa el iPhone para ver/crear/editar OC y mandarlas por WhatsApp. Facturas, conciliación y
   Excel quedan en la PC (no portarlos).
 
-## Etapa 2 (crear/editar OC) — EN MODO PRUEBA (2026-10-23)
+## Etapa 2 (crear/editar OC) — HABILITADA CON DATOS REALES en v0.4 (2026-10-23, OK de Alejo tras prueba TODO BIEN)
 - Interruptor "Modo prueba" en Ajustes: lee y escribe en `pruebas-iphone/` (copia de la base real armada el
   23/10 14:58; foto inicial en `App-Compras/respaldos/*pruebas-iphone-inicial.json`). Franja roja.
-- Con datos reales sigue SOLO LECTURA: `Config.escrituraReal = false`. Pasarlo a true SOLO con OK de Alejo,
-  después de que el verificador dé TODO BIEN, y con backup nuevo.
+- `Config.escrituraReal = true` desde v0.4. Backup previo: `App-Compras/respaldos/2026-10-23-1526-firebase-backup-pre-escritura-real-iphone.json`.
+  Verificador con `--real` compara la base real contra ese backup (ojo: también lista lo que se haga desde la PC).
 - Guardar (`Store.guardar`) = `_doSaveOrden` de la web: proveedor nuevo a la lista (PUT condicional con ETag,
   reintenta si la PC lo cambió), y en UN solo PATCH multi-ruta: la OC, obrasData/provData si son nuevos
   (`getObraId`/`getProvId`), evento de historial; después `config/nextOCNum` con ETag. WhatsApp al encargado
