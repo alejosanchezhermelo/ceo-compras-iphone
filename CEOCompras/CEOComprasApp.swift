@@ -95,10 +95,10 @@ struct Raiz: View {
 }
 
 
-/// Las 6 pestañas de la PWA, en el mismo orden, con una barra propia abajo
-/// (con el TabView común el iPhone mete la sexta en un menú "Más").
+/// Las 6 pestañas de la PWA, en el mismo orden, con una barra propia abajo.
 struct ContenidoPestanas: View {
     @State private var pestana = 0
+    @State private var visitadas: Set<Int> = [0]
 
     private let items: [(String, String)] = [
         ("ÓRDENES", "shippingbox"), ("ACTIVIDAD", "clock"), ("AJUSTES", "gearshape"),
@@ -114,17 +114,34 @@ struct ContenidoPestanas: View {
         }
     }
 
+    /// Las 6 pantallas quedan armadas una encima de otra y la barra elige cuál se ve.
+    /// NO se usa TabView: con más de 5 pestañas el iPhone mete las últimas en un menú "More"
+    /// escondido, y la flechita de atrás de Facturas llevaba a ese menú en blanco (foto de Alejo, 23/10).
+    /// Cada pantalla se arma la primera vez que se abre y después conserva lo que estabas haciendo.
     private func pestanas(tecladoAbierto: Bool) -> some View {
-        TabView(selection: $pestana) {
-            ListaOC().tag(0).toolbar(.hidden, for: .tabBar)
-            PantallaActividad().tag(1).toolbar(.hidden, for: .tabBar)
-            PantallaAjustes().tag(2).toolbar(.hidden, for: .tabBar)
-            PantallaPrecios().tag(3).toolbar(.hidden, for: .tabBar)
-            PantallaProveedores().tag(4).toolbar(.hidden, for: .tabBar)
-            PantallaFacturas().tag(5).toolbar(.hidden, for: .tabBar)
+        ZStack {
+            ForEach(0..<6, id: \.self) { i in
+                if visitadas.contains(i) {
+                    pantalla(i)
+                        .opacity(pestana == i ? 1 : 0)
+                        .allowsHitTesting(pestana == i)
+                        .accessibilityHidden(pestana != i)
+                }
+            }
         }
         .safeAreaInset(edge: .bottom, spacing: 0) {
             if !tecladoAbierto { barra }
+        }
+    }
+
+    @ViewBuilder private func pantalla(_ i: Int) -> some View {
+        switch i {
+        case 0: ListaOC()
+        case 1: PantallaActividad()
+        case 2: PantallaAjustes()
+        case 3: PantallaPrecios()
+        case 4: PantallaProveedores()
+        default: PantallaFacturas()
         }
     }
 
@@ -132,7 +149,7 @@ struct ContenidoPestanas: View {
         HStack(spacing: 0) {
             ForEach(items.indices, id: \.self) { i in
                 let elegida = pestana == i
-                Button { pestana = i } label: {
+                Button { visitadas.insert(i); pestana = i } label: {
                     VStack(spacing: 3) {
                         Image(systemName: items[i].1).font(.system(size: 18, weight: elegida ? .semibold : .regular))
                         Text(items[i].0).font(T.mono(8, .medium)).lineLimit(1).minimumScaleFactor(0.7)
