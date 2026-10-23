@@ -8,6 +8,7 @@ struct ListaOC: View {
     @State private var encargado = ""
     @State private var orden: Orden = .reciente
     @State private var verAjustes = false
+    @State private var nuevaOC = false
 
     private var hayFiltro: Bool { !obra.isEmpty || !encargado.isEmpty }
 
@@ -16,6 +17,13 @@ struct ListaOC: View {
                                       busqueda: busqueda, orden: orden)
         NavigationStack {
             List {
+                if store.modoPrueba {
+                    Label("MODO PRUEBA · base de prueba, no son tus OC reales", systemImage: "testtube.2")
+                        .font(.footnote.weight(.bold))
+                        .foregroundStyle(.white)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .listRowBackground(Color.red)
+                }
                 if let m = store.mensajeConexion {
                     Label(m, systemImage: "wifi.slash")
                         .font(.footnote)
@@ -46,7 +54,7 @@ struct ListaOC: View {
                 }
             }
             .listStyle(.plain)
-            .navigationTitle("Órdenes")
+            .navigationTitle(store.modoPrueba ? "Órdenes (prueba)" : "Órdenes")
             .navigationDestination(for: String.self) { id in DetalleOC(id: id) }
             .searchable(text: $busqueda, placement: .navigationBarDrawer(displayMode: .always),
                         prompt: "N°, proveedor, obra, encargado, factura")
@@ -56,8 +64,14 @@ struct ListaOC: View {
                     Button { verAjustes = true } label: { Image(systemName: "gearshape") }
                 }
                 ToolbarItem(placement: .topBarTrailing) { menuFiltros }
+                if store.puedeEditar {
+                    ToolbarItem(placement: .topBarTrailing) {
+                        Button { nuevaOC = true } label: { Image(systemName: "plus.circle.fill") }
+                    }
+                }
             }
             .sheet(isPresented: $verAjustes) { PantallaAjustes() }
+            .sheet(isPresented: $nuevaOC) { FormularioOC(editando: nil, numeroSugerido: store.nextOCNum) }
         }
     }
 

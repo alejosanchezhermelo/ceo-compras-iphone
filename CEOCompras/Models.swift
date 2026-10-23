@@ -37,6 +37,7 @@ struct OC: Identifiable, Hashable {
     let obra: String
     let proveedor: String
     let responsable: String
+    let rubro: String
     let fecha: String
     let notas: String
     let comentario: String
@@ -64,6 +65,7 @@ struct OC: Identifiable, Hashable {
         obra = texto(d["obra"])
         proveedor = texto(d["proveedor"])
         responsable = texto(d["responsable"])
+        rubro = texto(d["rubro"])
         fecha = texto(d["fecha"])
         notas = texto(d["notas"])
         comentario = texto(d["comentario"])

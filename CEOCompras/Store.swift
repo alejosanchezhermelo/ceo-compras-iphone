@@ -1,7 +1,9 @@
 import SwiftUI
 import CryptoKit
 
-/// Estado de toda la app. ETAPA 1: SOLO LECTURA — nunca escribe en Firebase.
+/// Estado de toda la app.
+/// - Datos reales: SOLO LECTURA (mientras `Config.escrituraReal` sea false).
+/// - Modo prueba: lee y escribe en `pruebas-iphone/`, una copia aparte de la base. Nunca toca las OC reales.
 @Observable @MainActor
 final class Store {
     enum Fase { case bloqueada, necesitaCodigo, adentro }
@@ -9,21 +11,33 @@ final class Store {
     var fase: Fase = .bloqueada
     /// Ya entró al menos una vez en esta sesión (la lista queda armada debajo del bloqueo).
     var haEntrado = false
+    var modoPrueba = UserDefaults.standard.bool(forKey: "modo-prueba")
     var ordenes: [OC] = []
     var eventosPorOC: [String: [EventoOC]] = [:]
     var obras: [String] = []
     var encargados: [String] = []
+    var proveedores: [String] = []
     var nextOCNum = 858
     var conectado = false
     var mensajeConexion: String?
     var mensajeLogin: String?
     var faceIDActivado = Keychain.get(Claves.faceID) != nil
     var ofrecerFaceID = false
+    /// Cartelito de confirmación ("OC 1603 creada").
+    var aviso: String?
 
-    /// Nodos de la base que usa la etapa 1 (no se baja `pruebas`, `listasPrecios`, etc.).
-    static let nodos = ["config", "ordenes", "obras", "encargados", "historial"]
+    /// Nodos que se leen (dentro de la base real o de la de prueba).
+    static let nodos = ["config", "ordenes", "obras", "encargados", "historial", "obrasData", "provData", "proveedores"]
+    /// Los contactos de WhatsApp se leen siempre de la base real (en prueba no se manda nada).
+    static let nodoContactos = "waContacts"
+    /// Para guardar, todos estos tienen que haber llegado en vivo (evita repetir el bug de duplicados de agosto).
+    static let nodosParaGuardar: Set<String> = ["config", "ordenes", "obrasData", "provData", "proveedores"]
 
     @ObservationIgnored private var arboles: [String: Any] = [:]
+    @ObservationIgnored private var waContacts: [[String: Any]] = []
+    @ObservationIgnored private var arbolContactos: Any?
+    @ObservationIgnored private var nodosEnVivo = Set<String>()
+    @ObservationIgnored private var generacion = 0
     @ObservationIgnored private var configPassword = ""
     @ObservationIgnored private var configCargado = false
     @ObservationIgnored private var configEnVivo = false
@@ -39,11 +53,19 @@ final class Store {
         conectar()
     }
 
+    /// Dónde se lee y escribe: "pruebas-iphone/" en modo prueba, la raíz en datos reales.
+    private var prefijo: String { modoPrueba ? "pruebas-iphone/" : "" }
+    private var base: String { modoPrueba ? "pruebas-iphone" : "" }
+
+    var puedeEditar: Bool { modoPrueba || Config.escrituraReal }
+
     // MARK: Conexión en vivo
 
     func conectar() {
         tareas.forEach { $0.cancel() }
-        tareas = Store.nodos.map { escuchar($0) }
+        let gen = generacion
+        tareas = Store.nodos.map { escuchar($0, ruta: prefijo + $0, gen: gen) }
+            + [escuchar(Store.nodoContactos, ruta: Store.nodoContactos, gen: gen)]
     }
 
     func reconectar() async {
@@ -58,15 +80,35 @@ final class Store {
         Task { await entrarConFaceID() }
     }
 
-    private func escuchar(_ nodo: String) -> Task<Void, Never> {
-        // El Store vive mientras viva la app, así que se lo toma directo (sin "weak").
+    func cambiarModoPrueba(_ activar: Bool) {
+        guard activar != modoPrueba else { return }
+        modoPrueba = activar
+        UserDefaults.standard.set(activar, forKey: "modo-prueba")
+        generacion += 1
+        tareas.forEach { $0.cancel() }
+        tareaCache?.cancel()
+        arboles = [:]
+        nodosEnVivo = []
+        configEnVivo = false
+        ordenes = []
+        eventosPorOC = [:]
+        obras = []
+        encargados = []
+        proveedores = []
+        conectado = false
+        cargarCache()
+        conectar()
+    }
+
+    // El Store vive mientras viva la app, así que se lo toma directo (sin "weak").
+    private func escuchar(_ nodo: String, ruta: String, gen: Int) -> Task<Void, Never> {
         Task {
             var espera: UInt64 = 1
             while !Task.isCancelled {
                 let inicio = Date()
                 do {
-                    try await Firebase.shared.escuchar(nodo) { evento, ruta, dato in
-                        await self.aplicar(nodo, evento, ruta, dato)
+                    try await Firebase.shared.escuchar(ruta) { evento, camino, dato in
+                        await self.aplicar(nodo, evento, camino, dato, gen: gen)
                     }
                 } catch FBError.codigoNoRegistrado {
                     self.fase = .necesitaCodigo
@@ -85,8 +127,15 @@ final class Store {
         }
     }
 
-    private func aplicar(_ nodo: String, _ evento: String, _ ruta: String, _ dato: Any) {
+    private func aplicar(_ nodo: String, _ evento: String, _ ruta: String, _ dato: Any, gen: Int) {
+        guard gen == generacion else { return }   // llegó tarde, de antes de cambiar de modo
+        if nodo == Store.nodoContactos {
+            arbolContactos = JSONTree.aplicar(arbolContactos, evento: evento, ruta: ruta, dato: dato)
+            waContacts = JSONTree.lista(arbolContactos).compactMap { $0 as? [String: Any] }
+            return
+        }
         arboles[nodo] = JSONTree.aplicar(arboles[nodo], evento: evento, ruta: ruta, dato: dato)
+        nodosEnVivo.insert(nodo)
         conectado = true
         mensajeConexion = nil
         reconstruir(nodo, enVivo: true)
@@ -132,9 +181,17 @@ final class Store {
         case "encargados":
             var vistos = Set<String>()
             encargados = JSONTree.lista(a).map { texto($0) }.filter { !$0.isEmpty && vistos.insert($0).inserted }
+        case "proveedores":
+            proveedores = Store.sinRepetir(JSONTree.lista(a).map { texto($0) })
         default:
-            break
+            break   // obrasData y provData se consultan directo al guardar
         }
+    }
+
+    /// Igual que la web: saca repetidos sin mirar mayúsculas.
+    private static func sinRepetir(_ lista: [String]) -> [String] {
+        var vistos = Set<String>()
+        return lista.filter { vistos.insert($0.lowercased()).inserted }
     }
 
     // MARK: Entrada (misma regla que la web)
@@ -228,6 +285,161 @@ final class Store {
         SHA256.hash(data: Data(s.utf8)).map { String(format: "%02x", $0) }.joined()
     }
 
+    // MARK: Guardar OC (etapa 2) — mismos pasos que `saveOrden()` / `_doSaveOrden()` de la web
+
+    func numeroRepetido(_ num: String, editandoId: String?) -> Bool {
+        let n = num.trimmingCharacters(in: .whitespaces)
+        return ordenes.contains { $0.num == n && $0.id != editandoId }
+    }
+
+    /// Mismas validaciones que la web. Devuelve el error, o nil si está todo bien.
+    func validar(_ b: BorradorOC, editando: OC?) -> String? {
+        guard puedeEditar else { return "Guardar no está habilitado con los datos reales todavía." }
+        let faltan = Store.nodosParaGuardar.subtracting(nodosEnVivo)
+        if !faltan.isEmpty { return "Todavía se están cargando los datos. Esperá unos segundos y reintentá." }
+        let num = b.num.trimmingCharacters(in: .whitespaces)
+        if num.isEmpty { return "Ingresá el número de OC" }
+        if !num.allSatisfy({ $0.isASCII && $0.isNumber }) { return "El número de OC debe ser solo números (ej: 858)" }
+        if b.obra.trimmingCharacters(in: .whitespaces).isEmpty { return "Elegí una obra" }
+        if b.encargado.isEmpty { return "Elegí el encargado" }
+        for it in b.items where !it.desc.trimmingCharacters(in: .whitespaces).isEmpty {
+            let c = Store.cantidad(it.cant)
+            if !c.isEmpty && Double(c) == nil { return "La cantidad de “\(it.desc)” tiene que ser un número" }
+        }
+        return nil
+    }
+
+    /// El campo de la web es numérico: "2,5" del teclado argentino se guarda como "2.5".
+    private static func cantidad(_ s: String) -> String {
+        s.trimmingCharacters(in: .whitespaces).replacingOccurrences(of: ",", with: ".")
+    }
+
+    /// Guarda una OC nueva o editada. Devuelve si salió bien y el mensaje para mostrar.
+    func guardar(_ b: BorradorOC, editando: OC?) async -> (ok: Bool, mensaje: String) {
+        if let e = validar(b, editando: editando) { return (false, e) }
+        let gen = generacion
+        let enPrueba = modoPrueba
+        let p = prefijo
+        let num = b.num.trimmingCharacters(in: .whitespaces)
+        let obra = b.obra.trimmingCharacters(in: .whitespaces)
+        let resp = b.encargado
+        let provEscrito = b.proveedor.trimmingCharacters(in: .whitespaces)
+        let prov = capitalizarProveedor(provEscrito)
+        let notas = b.notas.trimmingCharacters(in: .whitespaces)
+        let items: [[String: Any]] = b.items.compactMap { it in
+            let d = it.desc.trimmingCharacters(in: .whitespaces)
+            if d.isEmpty { return nil }
+            let c = Store.cantidad(it.cant)
+            return ["desc": d, "cant": c.isEmpty ? "—" : c, "unit": it.unit.trimmingCharacters(in: .whitespaces)]
+        }
+        let numEntero = Int(num) ?? 0
+        let numPDF: Any = numEntero > 0 ? (numEntero as Any) : (NSNull() as Any)   // parseInt(num) || null
+        let ahora = Int64(Date().timeIntervalSince1970 * 1000)
+
+        do {
+            // 1) Proveedor nuevo: se suma a la lista sin pisar lo que haya agregado la PC en el medio.
+            if !prov.isEmpty && !proveedores.contains(prov) {
+                try await agregarProveedor(prov, p)
+            }
+
+            // 2) La OC, su obra/proveedor (si son nuevos) y el historial, todo junto.
+            var cambios: [String: Any] = [:]
+            let obraId = idDe("obrasData", obra, prefijoId: "obra_", &cambios) { id in
+                ["id": id, "nombre": obra, "activa": true, "ts": ahora]
+            }
+            let provId = idDe("provData", prov, prefijoId: "prov_", &cambios) { id in
+                ["id": id, "nombre": prov, "tel": "", "mail": "", "cuit": "", "direccion": "", "ts": ahora]
+            }
+            let ocId: String
+            let textoHistorial: String
+            if let o = editando {
+                ocId = o.id
+                let campos: [String: Any] = [
+                    "num": num, "numOCPDF": numPDF, "obra": obra, "obraId": obraId, "responsable": resp,
+                    "proveedor": prov, "provId": provId, "rubro": o.rubro, "notas": notas, "items": items,
+                    // La web NO guarda la fecha al editar (es un error suyo); el iPhone sí.
+                    "fecha": b.fechaTexto,
+                ]
+                for (k, v) in campos { cambios["ordenes/\(ocId)/\(k)"] = v }
+                textoHistorial = "✏️ OC \(num) editada por Compras"
+            } else {
+                ocId = IDs.push()
+                var oc: [String: Any] = [
+                    "id": ocId, "num": num, "obra": obra, "obraId": obraId, "responsable": resp,
+                    "proveedor": prov, "provId": provId, "rubro": "", "fecha": b.fechaTexto, "notas": notas,
+                    "estado": "pendiente", "items": items, "comentario": "", "ts": ahora,
+                ]
+                if let n = numPDF as? Int { oc["numOCPDF"] = n }
+                cambios["ordenes/\(ocId)"] = oc
+                textoHistorial = "📦 OC \(num) creada por Compras → \(resp) (\(obra))"
+            }
+            let hid = IDs.push()
+            cambios["historial/\(hid)"] = ["id": hid, "tipo": "c", "texto": textoHistorial, "ocId": ocId, "ts": ahora]
+            try await Firebase.shared.actualizarJuntos(base: enPrueba ? "pruebas-iphone" : "", cambios)
+
+            // 3) Próximo número de OC (sin pisar un número que haya usado la PC en el medio).
+            try await subirProximoNumero(num, p)
+        } catch {
+            return (false, "No se pudo guardar. Revisá la conexión e intentá de nuevo.\n(\(error))")
+        }
+
+        // 4) Aviso por WhatsApp al encargado (en modo prueba no se manda).
+        var final = editando == nil ? "OC \(num) creada" : "OC \(num) guardada"
+        if gen == generacion {
+            let msg = editando == nil
+                ? "🏗 Pedidos\n📦 Nueva OC \(num) asignada a vos\nObra: \(obra)\nProveedor: \(provEscrito.isEmpty ? "sin especificar" : provEscrito)\nEntrega estimada: \(b.fechaTexto.isEmpty ? "sin fecha" : b.fechaTexto)"
+                : "🏗 Pedidos\n✏️ La OC \(num) fue editada por Compras."
+            final += await avisarEncargado(resp, msg, enPrueba: enPrueba)
+        }
+        return (true, final)
+    }
+
+    /// `getObraId` / `getProvId` de la web: busca por nombre (sin mirar mayúsculas); si no existe, lo crea.
+    private func idDe(_ nodo: String, _ nombre: String, prefijoId: String, _ cambios: inout [String: Any],
+                      nuevo: (String) -> [String: Any]) -> String {
+        if nombre.isEmpty { return "" }
+        let buscado = nombre.lowercased()
+        for (clave, v) in arboles[nodo] as? [String: Any] ?? [:] {
+            guard let d = v as? [String: Any], texto(d["nombre"]).lowercased() == buscado else { continue }
+            let id = texto(d["id"])
+            return id.isEmpty ? clave : id
+        }
+        let id = prefijoId + IDs.gen()
+        cambios["\(nodo)/\(id)"] = nuevo(id)
+        return id
+    }
+
+    private func agregarProveedor(_ prov: String, _ p: String) async throws {
+        for _ in 0..<4 {
+            let (valor, huella) = try await Firebase.shared.leerConHuella(p + "proveedores")
+            let lista = Store.sinRepetir(JSONTree.lista(valor).map { texto($0) })
+            if lista.contains(prov) { return }
+            if try await Firebase.shared.escribirSiNoCambio(p + "proveedores", lista + [prov], huella: huella) { return }
+        }
+        throw FBError.http(412, "la lista de proveedores cambió varias veces seguidas")
+    }
+
+    /// `subirNextNum` de la web: si el número usado es >= al contador, el contador pasa a número + 1.
+    private func subirProximoNumero(_ num: String, _ p: String) async throws {
+        guard let v = Int(num), v > 0 else { return }
+        for _ in 0..<4 {
+            let (actual, huella) = try await Firebase.shared.leerConHuella(p + "config/nextOCNum")
+            let contador = Int(numero(actual) ?? 858)
+            if v < contador { return }
+            if try await Firebase.shared.escribirSiNoCambio(p + "config/nextOCNum", v + 1, huella: huella) { return }
+        }
+        throw FBError.http(412, "el número de OC cambió varias veces seguidas")
+    }
+
+    /// `notifyE` de la web.
+    private func avisarEncargado(_ nombre: String, _ msg: String, enPrueba: Bool) async -> String {
+        if enPrueba { return " · Modo prueba: no se mandó el WhatsApp a \(nombre)." }
+        guard let c = waContacts.first(where: { texto($0["nombre"]) == nombre && texto($0["rol"]) == "encargado" }),
+              !texto(c["numero"]).isEmpty, !texto(c["apikey"]).isEmpty else { return "" }
+        await Firebase.shared.avisarWhatsApp(numero: texto(c["numero"]), apikey: texto(c["apikey"]), texto: msg)
+        return " · Aviso por WhatsApp a \(nombre)."
+    }
+
     // MARK: Primer plano / segundo plano
 
     func alAbrir() async {
@@ -254,15 +466,15 @@ final class Store {
         }
     }
 
-    // MARK: Copia local (para abrir al instante, aun sin señal)
+    // MARK: Copia local (para abrir al instante, aun sin señal). Una por modo.
 
-    nonisolated private static var archivoCache: URL {
+    nonisolated private static func archivoCache(prueba: Bool) -> URL {
         FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0]
-            .appendingPathComponent("ceo-datos.json")
+            .appendingPathComponent(prueba ? "ceo-datos-prueba.json" : "ceo-datos.json")
     }
 
     private func cargarCache() {
-        guard let d = try? Data(contentsOf: Store.archivoCache),
+        guard let d = try? Data(contentsOf: Store.archivoCache(prueba: modoPrueba)),
               let obj = (try? JSONSerialization.jsonObject(with: d)) as? [String: Any] else { return }
         arboles = obj
         for n in Store.nodos { reconstruir(n, enVivo: false) }
@@ -271,13 +483,15 @@ final class Store {
     private func guardarCacheLuego() {
         tareaCache?.cancel()
         let copia = arboles
+        let prueba = modoPrueba
         tareaCache = Task {
             try? await Task.sleep(nanoseconds: 2_000_000_000)
             if Task.isCancelled { return }
             await Task.detached(priority: .utility) {
                 guard JSONSerialization.isValidJSONObject(copia),
                       let d = try? JSONSerialization.data(withJSONObject: copia) else { return }
-                try? d.write(to: Store.archivoCache, options: [.atomic, .completeFileProtectionUntilFirstUserAuthentication])
+                try? d.write(to: Store.archivoCache(prueba: prueba),
+                             options: [.atomic, .completeFileProtectionUntilFirstUserAuthentication])
             }.value
         }
     }

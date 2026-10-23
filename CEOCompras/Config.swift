@@ -10,6 +10,9 @@ enum Config {
     static let dbURL = "https://sistema-ceo-default-rtdb.firebaseio.com"
     /// Mismo valor por defecto que la web (`config.password || 'compras123'`).
     static let passwordPorDefecto = "compras123"
+    /// ETAPA 2: crear/editar OC en los datos REALES. Queda en false hasta que Alejo apruebe las
+    /// pruebas; mientras tanto solo se puede guardar en "modo prueba" (copia aparte de la base).
+    static let escrituraReal = false
     /// Minutos en segundo plano tras los que la app se vuelve a bloquear.
     static let bloqueoTrasSegundos: TimeInterval = 5 * 60
 }

@@ -145,6 +145,19 @@ struct PantallaAjustes: View {
                     }
                 }
 
+                Section {
+                    Toggle("Modo prueba", isOn: Binding(
+                        get: { store.modoPrueba },
+                        set: { store.cambiarModoPrueba($0) }))
+                        .tint(.red)
+                } header: {
+                    Text("Crear y editar OC")
+                } footer: {
+                    Text(store.modoPrueba
+                         ? "Activado: ves y guardás en una COPIA aparte de la base (franja roja). Tus OC reales no se tocan y no se mandan WhatsApps."
+                         : "Apagado: ves tus OC reales, solo para consultar. Para probar crear y editar OC, activalo.")
+                }
+
                 Section("Conexión") {
                     LabeledContent("Estado", value: store.conectado ? "En vivo" : "Sin conexión")
                     LabeledContent("Órdenes", value: "\(store.ordenes.count)")
@@ -167,7 +180,9 @@ struct PantallaAjustes: View {
                 Section {
                     LabeledContent("Versión", value: version)
                 } footer: {
-                    Text("Etapa 1: solo lectura. Para crear, editar o marcar OC seguí usando la PC o la web.")
+                    Text(Config.escrituraReal
+                         ? "Crear y editar OC habilitado en los datos reales."
+                         : "Con los datos reales la app es solo de consulta. Crear y editar OC se prueba en el modo prueba.")
                 }
             }
             .navigationTitle("Ajustes")

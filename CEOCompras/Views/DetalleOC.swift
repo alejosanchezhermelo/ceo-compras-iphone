@@ -9,6 +9,7 @@ struct DetalleOC: View {
     @State private var pdfParaVer: ArchivoPDF?
     @State private var pdfParaCompartir: ArchivoPDF?
     @State private var error: String?
+    @State private var editar = false
 
     var body: some View {
         if let oc = store.ordenes.first(where: { $0.id == id }) {
@@ -109,6 +110,15 @@ struct DetalleOC: View {
         }
         .navigationTitle("OC \(oc.num)")
         .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            // Como la web: solo se editan las OC que no están entregadas.
+            if store.puedeEditar && oc.estado != "entregado" {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button("Editar") { editar = true }
+                }
+            }
+        }
+        .sheet(isPresented: $editar) { FormularioOC(editando: oc, numeroSugerido: store.nextOCNum) }
         .safeAreaInset(edge: .bottom) { botones(oc) }
         .sheet(item: $pdfParaVer) { VisorPDF(archivo: $0) }
         .sheet(item: $pdfParaCompartir) { a in

@@ -115,14 +115,63 @@ actor Firebase {
 
     // MARK: Lectura en vivo
 
-    private func pedido(_ ruta: String) async throws -> URLRequest {
+    private func pedido(_ ruta: String, enVivo: Bool = true) async throws -> URLRequest {
         let s = try await selloAppCheck()
         let t = try await tokenUsuario()
         guard let url = URL(string: "\(Config.dbURL)/\(ruta).json?auth=\(t)") else { throw FBError.formato }
         var r = URLRequest(url: url)
         r.setValue(s, forHTTPHeaderField: "X-Firebase-AppCheck")
-        r.setValue("text/event-stream", forHTTPHeaderField: "Accept")
+        if enVivo { r.setValue("text/event-stream", forHTTPHeaderField: "Accept") }
         return r
+    }
+
+    // MARK: Escritura (etapa 2)
+
+    /// Lee un dato junto con su "huella" (ETag), para después escribir solo si nadie lo cambió.
+    func leerConHuella(_ ruta: String) async throws -> (valor: Any?, huella: String) {
+        var r = try await pedido(ruta, enVivo: false)
+        r.setValue("true", forHTTPHeaderField: "X-Firebase-ETag")
+        let (data, resp) = try await sesion.data(for: r)
+        let http = resp as? HTTPURLResponse
+        guard http?.statusCode == 200 else { throw FBError.http(http?.statusCode ?? 0, "leer \(ruta)") }
+        let v = try JSONSerialization.jsonObject(with: data, options: [.fragmentsAllowed])
+        return (v is NSNull ? nil : v, http?.value(forHTTPHeaderField: "ETag") ?? "")
+    }
+
+    /// Escribe SOLO si el dato sigue igual que cuando se leyó. Devuelve false si alguien
+    /// (por ejemplo la PC) lo cambió en el medio: entonces hay que volver a leer y reintentar.
+    func escribirSiNoCambio(_ ruta: String, _ valor: Any, huella: String) async throws -> Bool {
+        var r = try await pedido(ruta, enVivo: false)
+        r.httpMethod = "PUT"
+        r.setValue(huella, forHTTPHeaderField: "if-match")
+        r.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        r.httpBody = try JSONSerialization.data(withJSONObject: valor, options: [.fragmentsAllowed])
+        let (_, resp) = try await sesion.data(for: r)
+        let codigo = (resp as? HTTPURLResponse)?.statusCode ?? 0
+        if codigo == 412 { return false }
+        guard codigo == 200 else { throw FBError.http(codigo, "escribir \(ruta)") }
+        return true
+    }
+
+    /// Varios cambios de una sola vez: o se guardan todos o ninguno.
+    /// Las claves son rutas debajo de `base` ("ordenes/ID", "historial/ID", ...). NSNull borra.
+    func actualizarJuntos(base: String, _ cambios: [String: Any]) async throws {
+        var r = try await pedido(base, enVivo: false)
+        r.httpMethod = "PATCH"
+        r.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        r.httpBody = try JSONSerialization.data(withJSONObject: cambios)
+        let (data, resp) = try await sesion.data(for: r)
+        let codigo = (resp as? HTTPURLResponse)?.statusCode ?? 0
+        guard codigo == 200 else { throw FBError.http(codigo, String(data: data, encoding: .utf8) ?? "") }
+    }
+
+    /// Aviso por WhatsApp con CallMeBot, igual que `sendWA` de la web.
+    nonisolated func avisarWhatsApp(numero: String, apikey: String, texto: String) async {
+        // encodeURIComponent de JavaScript
+        let permitidos = CharacterSet(charactersIn: "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_.!~*'()")
+        let t = texto.addingPercentEncoding(withAllowedCharacters: permitidos) ?? ""
+        guard let url = URL(string: "https://api.callmebot.com/whatsapp.php?phone=\(numero)&text=\(t)&apikey=\(apikey)") else { return }
+        _ = try? await URLSession.shared.data(from: url)
     }
 
     /// Escucha un nodo de la base. Firebase manda primero todo el contenido ("put" en "/")
