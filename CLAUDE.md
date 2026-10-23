@@ -12,7 +12,7 @@ Repo PÚBLICO: https://github.com/alejosanchezhermelo/ceo-compras-iphone (rama `
 - Antes de construir algo nuevo, proponer y esperar su OK. No agregar cosas que no pidió.
 - Al terminar un build: qué cambió, link de instalación y link a la versión anterior.
 
-## Estado: v0.4 (build-4) instalada y funcionando con datos reales (2026-10-23): crea/edita OC; primera OC real 1603 verificada TODO BIEN y WhatsApp al encargado OK. (v0.1 fue la primera instalada.) Código de dispositivo YA registrado ("iPhone Alejo (app nativa)"); se registra por API con la llave de servicio de la carpeta de la web (herramientas/*adminsdk*.json).
+## Estado al 2026-10-23 noche: v0.8 (build-10) = diseño PWA + grupos A y B + Cargar factura (QR AFIP). Antes: v0.4 (build-4) instalada y funcionando con datos reales: crea/edita OC; primera OC real 1603 verificada TODO BIEN y WhatsApp al encargado OK. (v0.1 fue la primera instalada.) Código de dispositivo YA registrado ("iPhone Alejo (app nativa)"); se registra por API con la llave de servicio de la carpeta de la web (herramientas/*adminsdk*.json).
 
 ## Etapas (decididas el 2026-10-23)
 - **Etapa 1 (esta): SOLO LECTURA.** Face ID nativo al abrir, lista de OC (pestañas, búsqueda,
@@ -90,3 +90,10 @@ Repo PÚBLICO: https://github.com/alejosanchezhermelo/ceo-compras-iphone (rama `
 - Swift 5 en modo de lenguaje; sin regex `/.../`.
 - La ventana de Face ID pone la app "inactiva": el bloqueo/Face ID se dispara solo al volver de
   `.background`, nunca de `.inactive` (si no, entra en bucle).
+
+## v0.5–v0.8 (2026-10-23)
+- Diseño PWA: `Views/Tema.swift` (colores de :root, fuentes CEOSyne/CEODMSans/CEODMMono en `Fuentes/`, OFL), modo claro fijo.
+- Barra propia de 6 pestañas (`ContenidoPestanas` en CEOComprasApp.swift): Órdenes, Actividad, Ajustes, Precios, Proveedores, Facturas.
+- Grupo A `StoreAcciones.swift` · Grupo B `StoreGrupoB.swift` · Facturas QR `StoreFacturas.swift` + `LectorQR.swift` + `Views/PantallaFacturas.swift`.
+- Reglas de la web portadas: `Facturas.swift` (importe, N° combinado, CUIT). Listas guardadas enteras por la web → `editarLista` con ETag.
+- OJO: no repetir nombres de archivo entre carpetas (Xcode falla: pasó con Facturas.swift en v0.8).
