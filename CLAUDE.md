@@ -12,6 +12,8 @@ Repo PÚBLICO: https://github.com/alejosanchezhermelo/ceo-compras-iphone (rama `
 - Antes de construir algo nuevo, proponer y esperar su OK. No agregar cosas que no pidió.
 - Al terminar un build: qué cambió, link de instalación y link a la versión anterior.
 
+## Estado: build-1 (v0.1) instalada y funcionando en el iPhone de Alejo (2026-10-23). Código de dispositivo YA registrado ("iPhone Alejo (app nativa)"); se registra por API con la llave de servicio de la carpeta de la web (herramientas/*adminsdk*.json).
+
 ## Etapas (decididas el 2026-10-23)
 - **Etapa 1 (esta): SOLO LECTURA.** Face ID nativo al abrir, lista de OC (pestañas, búsqueda,
   filtros obra/encargado, orden), ficha, PDF (ver/imprimir), compartir PDF (WhatsApp) y mail.
