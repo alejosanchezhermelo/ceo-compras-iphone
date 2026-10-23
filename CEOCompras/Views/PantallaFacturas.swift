@@ -28,6 +28,7 @@ struct PantallaFacturas: View {
     @State private var provEscrito = ""
     @State private var preguntaSuma: String?
     @State private var combo: ArchivoPDF?
+    @State private var opcionesOC: OC?
     @State private var trabajando = false
     @State private var error: String?
 
@@ -58,6 +59,7 @@ struct PantallaFacturas: View {
             .onChange(of: foto) { _, item in if let item { leerFoto(item) } }
             .fullScreenCover(isPresented: $camara) { camaraVista }
             .sheet(item: $combo) { VisorPDF(archivo: $0) }
+            .sheet(item: $opcionesOC) { OpcionesOC(oc: $0) }
             .alert(preguntaSuma ?? "", isPresented: Binding(get: { preguntaSuma != nil }, set: { if !$0 { preguntaSuma = nil } })) {
                 Button("Guardar igual") { grabar() }
                 Button("Cancelar", role: .cancel) {}
@@ -339,6 +341,12 @@ struct PantallaFacturas: View {
             if pdf != nil, let f {
                 Button("🖨️ Imprimir / compartir OC + factura") { armarCombo(f) }.buttonStyle(BotonPWA())
             }
+            // Imprimir cada OC (como "Generar OC" de la ficha), aunque la factura haya entrado sin PDF
+            ForEach(store.ordenes.filter { tildadasGuardadas.contains($0.id) }.sorted { $0.numeroEntero < $1.numeroEntero }) { o in
+                Button("📄 Imprimir OC \(o.num)") { generarOC(o) }
+                    .buttonStyle(BotonPWA(tipo: .suave(T.blL, T.bl, T.blM)))
+                    .disabled(trabajando)
+            }
             Button("➕ Cargar otra factura") { reiniciar() }.buttonStyle(BotonPWA(tipo: .blanco))
         }
         .padding(16)
@@ -490,6 +498,10 @@ struct PantallaFacturas: View {
             store.aviso = "✅ Factura asociada a \(imp.count) OC"
             tildadasGuardadas = Array(imp.keys)
             paso = .guardada(imp.count)
+            // Como al cargar la factura desde la ficha: con una sola OC, se abre para imprimir
+            if imp.count == 1, let id = imp.keys.first, let o = store.ordenes.first(where: { $0.id == id }) {
+                generarOC(o)
+            }
         }
     }
 
@@ -502,6 +514,16 @@ struct PantallaFacturas: View {
             combo = ArchivoPDF(url: url, titulo: "OC + factura \(f.num)")
         } catch {
             self.error = "No se pudo armar el PDF"
+        }
+    }
+
+    /// "Generar OC" de la ficha: anota el PDF en el historial y abre Imprimir / WhatsApp / Mail.
+    private func generarOC(_ o: OC) {
+        trabajando = true
+        Task {
+            let e = store.puedeEditar ? await store.registrarPDF(o) : nil
+            trabajando = false
+            if let e { error = e } else { opcionesOC = o }
         }
     }
 
