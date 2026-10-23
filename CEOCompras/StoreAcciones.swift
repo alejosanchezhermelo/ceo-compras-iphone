@@ -6,7 +6,7 @@ extension Store {
 
     // MARK: Ayudas
 
-    static func ahoraMs() -> Int64 { Int64(Date().timeIntervalSince1970 * 1000) }
+    nonisolated static func ahoraMs() -> Int64 { Int64(Date().timeIntervalSince1970 * 1000) }
 
     /// `logE(tipo, texto, ocId)` de la web: devuelve la ruta y el valor del evento para sumarlo a un PATCH.
     func evento(_ texto: String, tipo: String, ocId: String?, ts: Int64 = Store.ahoraMs()) -> (String, [String: Any]) {
