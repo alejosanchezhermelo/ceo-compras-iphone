@@ -1,0 +1,73 @@
+# CEO Compras (iPhone) — contexto para Claude
+
+App nativa de iPhone (SwiftUI) de la app de compras de CEO Construcciones. La app principal es la
+web/PWA (https://sistemaceoconstrucciones.netlify.app/, código en
+`C:\Users\Compras\OneDrive\Documents\App-Compras\2026-05-27-app-local\index.html`). Esta app lee
+la MISMA base de Firebase. Se instala gratis con **SideStore**, igual que la app del gym
+(`C:\Users\Compras\OneDrive\Desktop\App Gym`, de donde salió la receta de compilación).
+Repo PÚBLICO: https://github.com/alejosanchezhermelo/ceo-compras-iphone (rama `main`).
+
+## El usuario (Alejo)
+- Español rioplatense, voseo. No es programador: pasos cortos, sin tecnicismos.
+- Antes de construir algo nuevo, proponer y esperar su OK. No agregar cosas que no pidió.
+- Al terminar un build: qué cambió, link de instalación y link a la versión anterior.
+
+## Etapas (decididas el 2026-10-23)
+- **Etapa 1 (esta): SOLO LECTURA.** Face ID nativo al abrir, lista de OC (pestañas, búsqueda,
+  filtros obra/encargado, orden), ficha, PDF (ver/imprimir), compartir PDF (WhatsApp) y mail.
+  **No escribe nada en Firebase.** Diferencias con la web por eso: generar el PDF no anota
+  "OC PDF No X generada" en el historial; una OC sin `numOCPDF` no se puede generar acá.
+- **Etapa 2 (pendiente de que Alejo decida tras probar la 1):** crear/editar OC. Guardar una OC en
+  la web hace 5 cosas que hay que replicar igual (`_doSaveOrden` en index.html): número +
+  `config/nextOCNum`, alta en la lista `proveedores` si es nuevo, `obraId`/`provId`, evento en
+  `historial` (`logE`), aviso por WhatsApp al encargado (`notifyE`, CallMeBot). Antes de escribir:
+  arreglar en la web los 2 puntos débiles (lista `proveedores` se guarda entera con `set` → pisadas;
+  número de OC sin transacción) y armar prueba que compare OC guardadas desde iPhone y desde la web.
+  Backup de Firebase antes de habilitar escritura.
+- Alejo usa el iPhone para ver/crear/editar OC y mandarlas por WhatsApp. Facturas, conciliación y
+  Excel quedan en la PC (no portarlos).
+
+## Cómo se conecta (sin SDK de Firebase, por REST) — `Firebase.swift`
+- Base con App Check OBLIGATORIO + reglas `auth != null`. Hacen falta los dos:
+  1. Usuario anónimo: `identitytoolkit accounts:signUp` (refresh con `securetoken`), guardado en llavero.
+  2. Sello App Check: `exchangeDebugToken` contra la **app web** (`Config.appId`) con el "código de
+     dispositivo" (UUID que genera cada iPhone, en su llavero). **Ese código hay que registrarlo una
+     vez** en Firebase → App Check → app web → debug tokens. Es una llave: NUNCA va al repo ni al .ipa.
+- Lectura en vivo por SSE (`Accept: text/event-stream`) de 5 nodos: config, ordenes, obras,
+  encargados, historial (no se baja `pruebas`, que pesa 640 KB). `JSONTree` aplica put/patch.
+- Copia local en Caches (`ceo-datos.json`) para abrir al instante y sin señal.
+- Probado desde la PC el 2026-10-23 (script en el scratchpad de esa sesión): anónimo + sello → 200;
+  sin sello → "Missing appcheck token"; código no registrado → 403 "App attestation failed".
+
+## Reglas copiadas de la web (si la web cambia, cambiar acá)
+- Contraseña: `config.password || 'compras123'`; si mide 64 es SHA-256. Face ID guarda ese valor y
+  se anula si cambia.
+- OC formato viejo/nuevo: se lee `obra`/`proveedor` como texto (están en las 442 OC).
+- Filtros/orden = `renderC()`. Etiquetas = `cardOC()`. Facturas = `_facLista()`.
+- PDF = `generarPDFDoc()` (jsPDF + autoTable, medidas en mm). **La web lee `it.unidad` pero los
+  ítems guardan `unit`** → la columna Unidad sale vacía en la web; acá se replica igual a propósito.
+  Si Alejo pide arreglarlo, cambiarlo en los dos lados juntos.
+
+## Cómo se compila y publica (no hay Mac)
+1. Subir `MARKETING_VERSION` / `CURRENT_PROJECT_VERSION` en `project.yml`.
+2. `git commit` + `git push origin main` → GitHub Actions (macOS): XcodeGen → xcodebuild sin firmar
+   → `CEOCompras.ipa` → Release `build-N`.
+3. `gh run watch <id> -R alejosanchezhermelo/ceo-compras-iphone`; si falla:
+   `gh run view <id> --log | grep " error:"`.
+- `gh` en Bash: `export PATH="$PATH:/c/Program Files/GitHub CLI"`.
+- Solo documentación: `[skip ci]` en el commit.
+- Instalar: `https://github.com/alejosanchezhermelo/ceo-compras-iphone/releases/latest/download/CEOCompras.ipa`
+  → Safari → SideStore → My Apps → + → elegir el .ipa.
+- Bundle ID fijo: `com.alejosanchez.ceocompras` (no cambiarlo: gasta App IDs, 10 por semana).
+- SideStore gratis: máximo 3 apps activas (SideStore + gym + esta = lleno).
+
+## Estructura
+`Config` (datos públicos), `Keychain`, `Firebase` (REST + SSE), `JSONTree` (+ lectores tolerantes),
+`Models` (OC, filtros, formatos), `Store` (estado, login, Face ID, bloqueo a los 5 min, caché),
+`Biometria`, `PDFOC`, `Views/` (`ListaOC`, `DetalleOC`, `PantallasEntrada`: login/código/ajustes,
+`Componentes`).
+
+## Reglas técnicas
+- Swift 5 en modo de lenguaje; sin regex `/.../`.
+- La ventana de Face ID pone la app "inactiva": el bloqueo/Face ID se dispara solo al volver de
+  `.background`, nunca de `.inactive` (si no, entra en bucle).

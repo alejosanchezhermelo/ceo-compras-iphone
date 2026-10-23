@@ -1,0 +1,39 @@
+name: CEOCompras
+options:
+  bundleIdPrefix: com.alejosanchez
+  deploymentTarget:
+    iOS: "18.0"
+  createIntermediateGroups: true
+
+settings:
+  base:
+    SWIFT_VERSION: "5.0"
+    MARKETING_VERSION: "0.1"
+    CURRENT_PROJECT_VERSION: "1"
+    TARGETED_DEVICE_FAMILY: "1"
+    CODE_SIGN_STYLE: Manual
+    DEVELOPMENT_TEAM: ""
+
+targets:
+  CEOCompras:
+    type: application
+    platform: iOS
+    sources:
+      - path: CEOCompras
+    info:
+      path: CEOCompras/Info.plist
+      properties:
+        CFBundleDisplayName: CEO Compras
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
+        UILaunchScreen: {}
+        UISupportedInterfaceOrientations:
+          - UIInterfaceOrientationPortrait
+        UIRequiresFullScreen: true
+        NSFaceIDUsageDescription: Para entrar a la app con tu cara, sin escribir la contraseña.
+        ITSAppUsesNonExemptEncryption: false
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.alejosanchez.ceocompras
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+    scheme: {}

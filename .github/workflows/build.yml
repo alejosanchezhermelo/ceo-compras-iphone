@@ -1,0 +1,73 @@
+name: Compilar IPA
+
+on:
+  push:
+    branches: [main]
+    # Los cambios de documentación no generan un build.
+    paths-ignore: ['**.md']
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: build-ipa
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Versión de Xcode
+        run: xcodebuild -version
+
+      - name: Instalar XcodeGen
+        run: brew install xcodegen
+
+      - name: Generar proyecto
+        run: xcodegen generate
+
+      - name: Compilar (sin firmar)
+        run: |
+          set -o pipefail
+          xcodebuild \
+            -project CEOCompras.xcodeproj \
+            -scheme CEOCompras \
+            -configuration Release \
+            -sdk iphoneos \
+            -destination 'generic/platform=iOS' \
+            -derivedDataPath build \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_IDENTITY="" \
+            build | tee xcodebuild.log | grep -E "error:|warning:|BUILD" || true
+          # Si la compilación falla no se publica nada.
+          grep -q "BUILD SUCCEEDED" xcodebuild.log
+          test -d build/Build/Products/Release-iphoneos/CEOCompras.app
+
+      - name: Armar .ipa sin firmar
+        run: |
+          mkdir -p Payload
+          cp -R build/Build/Products/Release-iphoneos/CEOCompras.app Payload/
+          zip -qry CEOCompras.ipa Payload
+          ls -lh CEOCompras.ipa
+
+      - name: Subir log si falla
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: xcodebuild-log
+          path: xcodebuild.log
+
+      - name: Publicar Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: build-${{ github.run_number }}
+          name: CEO Compras (build ${{ github.run_number }})
+          body: |
+            .ipa sin firmar para instalar con SideStore.
+            Commit: ${{ github.sha }}
+          files: CEOCompras.ipa
+          make_latest: true

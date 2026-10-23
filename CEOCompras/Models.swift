@@ -1,0 +1,221 @@
+import Foundation
+
+struct ItemOC: Identifiable, Hashable {
+    let id: Int
+    let desc: String
+    let cant: String
+    let unit: String
+    /// El PDF de la web lee `it.unidad`, pero las OC guardan la unidad en `unit`, así que en el
+    /// PDF la columna "Unidad" sale vacía. Se replica igual para que los PDF sean idénticos.
+    let unidad: String
+}
+
+struct FacturaOC: Hashable {
+    let num: String
+    let importe: Double?
+}
+
+struct NotaInterna: Hashable {
+    let txt: String
+    let ts: Double?
+}
+
+struct EventoOC: Identifiable, Hashable {
+    let id: String
+    let ocId: String
+    let tipo: String
+    let texto: String
+    let ts: Double
+}
+
+/// Una orden de compra, leída de `ordenes/<id>` tal como la guarda la web.
+struct OC: Identifiable, Hashable {
+    let id: String
+    let num: String
+    let numOCPDF: Int?
+    let estado: String
+    let obra: String
+    let proveedor: String
+    let responsable: String
+    let fecha: String
+    let notas: String
+    let comentario: String
+    let remito: String
+    let fechaEntregaReal: String
+    let solRef: String
+    let urgente: Bool
+    let importadoPDF: Bool
+    let ts: Double
+    let items: [ItemOC]
+    let tieneFactura: Bool
+    /// `o.factura` (la que muestra la etiqueta de la tarjeta).
+    let facturaPrincipal: FacturaOC?
+    /// Igual que `_facLista(o)` de la web.
+    let facturas: [FacturaOC]
+    let notasInternas: [NotaInterna]
+
+    init?(clave: String, _ valor: Any) {
+        guard let d = valor as? [String: Any] else { return nil }
+        let idGuardado = texto(d["id"])
+        id = idGuardado.isEmpty ? clave : idGuardado
+        num = texto(d["num"])
+        if let n = numero(d["numOCPDF"]), n > 0 { numOCPDF = Int(n) } else { numOCPDF = nil }
+        estado = texto(d["estado"])
+        obra = texto(d["obra"])
+        proveedor = texto(d["proveedor"])
+        responsable = texto(d["responsable"])
+        fecha = texto(d["fecha"])
+        notas = texto(d["notas"])
+        comentario = texto(d["comentario"])
+        remito = texto(d["remito"])
+        fechaEntregaReal = texto(d["fechaEntregaReal"])
+        solRef = texto(d["solRef"])
+        urgente = verdadero(d["urgente"])
+        importadoPDF = verdadero(d["importadoPDF"])
+        ts = numero(d["ts"]) ?? 0
+
+        items = JSONTree.lista(d["items"]).enumerated().compactMap { i, x in
+            guard let it = x as? [String: Any] else { return nil }
+            return ItemOC(id: i, desc: texto(it["desc"]), cant: texto(it["cant"]),
+                          unit: texto(it["unit"]), unidad: texto(it["unidad"]))
+        }
+
+        func factura(_ v: Any) -> FacturaOC? {
+            guard let f = v as? [String: Any] else { return nil }
+            return FacturaOC(num: texto(f["num"]), importe: numero(f["importe"]))
+        }
+        tieneFactura = verdadero(d["factura"])
+        if tieneFactura, let f = d["factura"].flatMap(factura) {
+            facturaPrincipal = f
+            let varias = JSONTree.lista(d["facturas"]).compactMap(factura)
+            facturas = varias.isEmpty ? [f] : varias
+        } else {
+            facturaPrincipal = nil
+            facturas = []
+        }
+
+        notasInternas = JSONTree.lista(d["notasInternas"]).compactMap { x in
+            guard let n = x as? [String: Any] else { return nil }
+            return NotaInterna(txt: texto(n["txt"]), ts: numero(n["ts"]))
+        }
+    }
+
+    var totalFacturado: Double { facturas.reduce(0) { $0 + ($1.importe ?? 0) } }
+
+    /// La web muestra la fecha de entrega tal cual; acá se da vuelta (2026-10-23 → 23/10/2026).
+    var fechaEntregaTexto: String {
+        fecha.isEmpty ? "sin fecha" : fecha.split(separator: "-").reversed().joined(separator: "/")
+    }
+
+    /// `parseInt(o.num || 0)` de la web.
+    var numeroEntero: Int { Int(num.prefix { $0.isNumber }) ?? 0 }
+
+    var rangoEstado: Int { ["pendiente": 0, "parcial": 1, "entregado": 2][estado] ?? 0 }
+}
+
+enum Pestana: String, CaseIterable, Identifiable {
+    case todos, pendiente, parcial, entregado, facturadas
+    var id: String { rawValue }
+    var titulo: String {
+        switch self {
+        case .todos: return "Todos"
+        case .pendiente: return "Pend."
+        case .parcial: return "Parcial"
+        case .entregado: return "Entregado"
+        case .facturadas: return "Facturadas"
+        }
+    }
+}
+
+enum Orden: String, CaseIterable, Identifiable {
+    case reciente, numero, proveedor, obra, estado
+    var id: String { rawValue }
+    var titulo: String {
+        switch self {
+        case .reciente: return "Más recientes"
+        case .numero: return "N° de OC"
+        case .proveedor: return "Proveedor"
+        case .obra: return "Obra"
+        case .estado: return "Estado"
+        }
+    }
+}
+
+/// Mismos filtros y el mismo orden que `renderC()` de la web.
+enum Filtro {
+    static func aplicar(_ ocs: [OC], pestana: Pestana, obra: String, encargado: String,
+                        busqueda: String, orden: Orden) -> [OC] {
+        let q = busqueda.trimmingCharacters(in: .whitespaces).lowercased()
+        return ocs.filter { o in
+            if o.importadoPDF && (o.obra.isEmpty || o.responsable.isEmpty) { return false }
+            switch pestana {
+            case .todos: break
+            case .facturadas: if !o.tieneFactura { return false }
+            default: if o.estado != pestana.rawValue { return false }
+            }
+            if !obra.isEmpty && o.obra != obra { return false }
+            if !encargado.isEmpty && o.responsable != encargado { return false }
+            if !q.isEmpty {
+                let campos = [o.num, o.proveedor, o.responsable, o.obra, o.facturaPrincipal?.num ?? ""]
+                    + o.facturas.map(\.num)
+                if !campos.contains(where: { $0.lowercased().contains(q) }) { return false }
+            }
+            return true
+        }.sorted { a, b in
+            if a.urgente != b.urgente { return a.urgente }
+            switch orden {
+            case .reciente: return a.ts > b.ts
+            case .numero: return a.numeroEntero < b.numeroEntero
+            case .proveedor: return a.proveedor.localizedCompare(b.proveedor) == .orderedAscending
+            case .obra: return a.obra.localizedCompare(b.obra) == .orderedAscending
+            case .estado: return a.rangoEstado < b.rangoEstado
+            }
+        }
+    }
+
+    static func cuenta(_ ocs: [OC], _ p: Pestana) -> Int {
+        switch p {
+        case .todos: return ocs.count
+        case .facturadas: return ocs.filter(\.tieneFactura).count
+        default: return ocs.filter { $0.estado == p.rawValue }.count
+        }
+    }
+}
+
+enum Formato {
+    private static let moneda: NumberFormatter = {
+        let f = NumberFormatter()
+        f.locale = Locale(identifier: "es_AR")
+        f.numberStyle = .decimal
+        f.minimumFractionDigits = 2
+        f.maximumFractionDigits = 2
+        return f
+    }()
+
+    private static let formatoFechaHora: DateFormatter = {
+        let f = DateFormatter()
+        f.locale = Locale(identifier: "es_AR")
+        f.dateFormat = "d/M/yyyy HH:mm"
+        return f
+    }()
+
+    private static let soloFecha: DateFormatter = {
+        let f = DateFormatter()
+        f.locale = Locale(identifier: "es_AR")
+        f.dateFormat = "d/M/yyyy"
+        return f
+    }()
+
+    /// `_facFmtMoneda` de la web: "$ 131.970,34".
+    static func pesos(_ n: Double) -> String {
+        "$ " + (moneda.string(from: NSNumber(value: n)) ?? String(n))
+    }
+
+    /// `fd(ts)` de la web.
+    static func fechaHora(_ ts: Double) -> String {
+        formatoFechaHora.string(from: Date(timeIntervalSince1970: ts / 1000))
+    }
+
+    /// `new Date().toLocaleDateString('es-AR')`.
+    static func hoy() -> String { soloFecha.string(from: Date()) }
+}

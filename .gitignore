@@ -1,0 +1,12 @@
+*.xcodeproj/
+build/
+Payload/
+*.ipa
+xcodebuild.log
+.DS_Store
+# Nada secreto va en este repo (es público). El código de dispositivo de App Check
+# lo genera cada iPhone y queda en su llavero; nunca se escribe acá.
+*adminsdk*.json
+*.pem
+*.p12
+*.mobileprovision
