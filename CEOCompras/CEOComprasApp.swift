@@ -58,6 +58,10 @@ struct Raiz: View {
                         .tabItem { Label("ÓRDENES", systemImage: "shippingbox") }
                     PantallaActividad()
                         .tabItem { Label("ACTIVIDAD", systemImage: "clock") }
+                    PantallaProveedores()
+                        .tabItem { Label("PROVEEDORES", systemImage: "trophy") }
+                    PantallaPrecios()
+                        .tabItem { Label("PRECIOS", systemImage: "dollarsign.circle") }
                     PantallaAjustes()
                         .tabItem { Label("AJUSTES", systemImage: "gearshape") }
                 }

@@ -12,6 +12,7 @@ struct ListaOC: View {
     @State private var verSolicitud: Solicitud?
     @State private var solicitudParaOC: Solicitud?
     @State private var pendienteOC: Solicitud?
+    @State private var asignar: OC?
 
     var body: some View {
         let visibles = Filtro.aplicar(store.ordenes, pestana: pestana, obra: obra, encargado: encargado,
@@ -32,6 +33,14 @@ struct ListaOC: View {
                             .buttonStyle(BotonPWA())
                     }
 
+                    let importadas = store.importadasSinAsignar
+                    if !importadas.isEmpty {
+                        Divisor(texto: "📥 OC importadas — pendientes de asignar", n: importadas.count,
+                                color: T.am, claro: T.amL, medio: T.amM)
+                        ForEach(importadas) { o in
+                            Button { asignar = o } label: { TarjetaImportada(oc: o) }.buttonStyle(.plain)
+                        }
+                    }
                     if !store.solicitudes.isEmpty {
                         Divisor(texto: "📋 Solicitudes de material", n: store.solicitudes.count,
                                 color: T.pp, claro: T.ppL, medio: T.ppM)
@@ -68,6 +77,7 @@ struct ListaOC: View {
             }) { s in
                 DetalleSolicitud(sol: s) { pendienteOC = s }
             }
+            .sheet(item: $asignar) { o in AsignarImportada(oc: o) }
             .sheet(item: $solicitudParaOC) { s in
                 FormularioOC(editando: nil, numeroSugerido: store.nextOCNum, solicitud: s)
             }
@@ -237,5 +247,88 @@ struct FilaOC: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .contentShape(Rectangle())
         .tarjeta(fondo: oc.urgente ? T.urgenteFondo : T.sf, bordeIzq: oc.urgente ? T.urgente : nil)
+    }
+}
+
+
+/// OC importada de PDF sin obra o encargado (`cardOCPdf`, borde ámbar).
+struct TarjetaImportada: View {
+    let oc: OC
+    var body: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Renglones(espacio: 5) {
+                Text(oc.num.isEmpty ? "—" : oc.num).font(T.syne(14)).foregroundStyle(T.bl)
+                Etiqueta(texto: "📥 Importada de PDF", fondo: T.sf, color: T.am, borde: T.amM)
+                Etiqueta(texto: "Sin asignar", fondo: T.amL, color: T.am, borde: T.amM)
+            }
+            Text(oc.proveedor.isEmpty ? "Sin proveedor" : oc.proveedor).font(T.sans(13)).foregroundStyle(T.tx2)
+            Text("Archivo: \(oc.archivoOrigen)" + (oc.fecha.isEmpty ? "" : " · Fecha: \(oc.fecha)"))
+                .font(T.mono(11)).foregroundStyle(T.tx3)
+        }
+        .padding(.vertical, 13).padding(.horizontal, 16)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .contentShape(Rectangle())
+        .tarjeta(fondo: T.amL, bordeIzq: T.am)
+    }
+}
+
+/// Asignar obra y encargado a una OC importada (`asignarOC`) o eliminarla.
+struct AsignarImportada: View {
+    @Environment(Store.self) private var store
+    @Environment(\.dismiss) private var dismiss
+    let oc: OC
+    @State private var obra = ""
+    @State private var enc = ""
+    @State private var prov = ""
+    @State private var error: String?
+    @State private var preguntarBorrar = false
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                Section("Materiales") {
+                    if oc.items.isEmpty { Text("Sin ítems").foregroundStyle(T.tx3) }
+                    ForEach(oc.items) { it in
+                        HStack { Text(it.desc); Spacer(); Text(it.cant); Text(it.unit).foregroundStyle(T.tx3) }
+                    }
+                }
+                if !oc.notas.isEmpty { Section("Notas") { Text(oc.notas) } }
+                Section("⚙ Asignar obra y encargado") {
+                    Picker("Obra *", selection: $obra) {
+                        Text("— Seleccionar —").tag("")
+                        ForEach(store.obras, id: \.self) { Text($0).tag($0) }
+                    }
+                    Picker("Encargado *", selection: $enc) {
+                        Text("— Seleccionar —").tag("")
+                        ForEach(store.encargados, id: \.self) { Text($0).tag($0) }
+                    }
+                    TextField("Proveedor", text: $prov)
+                    Button("✓ Guardar asignación y activar OC") { guardar() }
+                }
+                Section { Button("🗑 Eliminar", role: .destructive) { preguntarBorrar = true } }
+            }
+            .scrollContentBackground(.hidden).background(T.bg).font(T.sans(15))
+            .navigationTitle("OC \(oc.num)").navigationBarTitleDisplayMode(.inline)
+            .toolbar { ToolbarItem(placement: .cancellationAction) { Button("Cerrar") { dismiss() } } }
+            .onAppear { prov = oc.proveedor }
+            .alert("¿Eliminar la OC \(oc.num)? Esta acción no se puede deshacer.", isPresented: $preguntarBorrar) {
+                Button("Eliminar", role: .destructive) {
+                    Task { if let e = await store.eliminarOC(oc) { error = e } else { store.aviso = "🗑 OC eliminada"; dismiss() } }
+                }
+                Button("Cancelar", role: .cancel) {}
+            }
+            .alert("No se guardó", isPresented: Binding(get: { error != nil }, set: { if !$0 { error = nil } })) {
+                Button("OK", role: .cancel) {}
+            } message: { Text(error ?? "") }
+        }
+    }
+
+    private func guardar() {
+        Task {
+            if let e = await store.asignarImportada(oc, obra: obra, encargado: enc, proveedor: prov) { error = e } else {
+                store.aviso = "✅ OC activada"
+                dismiss()
+            }
+        }
     }
 }

@@ -86,6 +86,7 @@ struct OC: Identifiable, Hashable {
     let remito: String
     let fechaEntregaReal: String
     let solRef: String
+    let archivoOrigen: String
     let urgente: Bool
     let importadoPDF: Bool
     let ts: Double
@@ -116,6 +117,7 @@ struct OC: Identifiable, Hashable {
         remito = texto(d["remito"])
         fechaEntregaReal = texto(d["fechaEntregaReal"])
         solRef = texto(d["solRef"])
+        archivoOrigen = texto(d["archivoOrigen"])
         urgente = verdadero(d["urgente"])
         importadoPDF = verdadero(d["importadoPDF"])
         ts = numero(d["ts"]) ?? 0
@@ -265,4 +267,75 @@ enum Formato {
 
     /// `new Date().toLocaleDateString('es-AR')`.
     static func hoy() -> String { soloFecha.string(from: Date()) }
+}
+
+
+/// Ficha de proveedor (`provData/<id>`).
+struct FichaProveedor: Identifiable, Hashable {
+    let id: String
+    let nombre: String
+    let tel: String
+    let mail: String
+    let cuit: String
+    let direccion: String
+
+    init?(clave: String, _ v: Any) {
+        guard let d = v as? [String: Any] else { return nil }
+        let i = texto(d["id"])
+        id = i.isEmpty ? clave : i
+        nombre = texto(d["nombre"])
+        tel = texto(d["tel"])
+        mail = texto(d["mail"])
+        cuit = texto(d["cuit"])
+        direccion = texto(d["direccion"])
+    }
+}
+
+/// Contacto de WhatsApp para avisos (`waContacts`).
+struct ContactoWA: Hashable, Identifiable {
+    var id: String { numero }
+    let nombre: String
+    let numero: String
+    let apikey: String
+    let rol: String
+    var diccionario: [String: Any] { ["nombre": nombre, "numero": numero, "apikey": apikey, "rol": rol] }
+}
+
+/// Lista de precios de un proveedor (`listasPrecios/<id>`): manual (productos y precios) o archivo (PDF/imagen).
+struct ListaPrecios: Identifiable, Hashable {
+    struct Item: Hashable { let prod: String; let precio: String }
+    let id: String
+    let proveedor: String
+    let tipo: String
+    let fecha: String
+    let ts: Double
+    let items: [Item]
+    let fileType: String
+    let fileData: String
+
+    init?(clave: String, _ v: Any) {
+        guard let d = v as? [String: Any] else { return nil }
+        let i = texto(d["id"])
+        id = i.isEmpty ? clave : i
+        proveedor = texto(d["proveedor"])
+        tipo = texto(d["tipo"])
+        fecha = texto(d["fecha"])
+        ts = numero(d["ts"]) ?? 0
+        items = JSONTree.lista(d["items"]).compactMap { x in
+            guard let it = x as? [String: Any] else { return nil }
+            return Item(prod: texto(it["prod"]), precio: texto(it["precio"]))
+        }
+        fileType = texto(d["fileType"])
+        fileData = texto(d["fileData"])
+    }
+
+    /// `l.fecha || fd(l.ts)`
+    var rotulo: String { fecha.isEmpty ? Formato.fechaHora(ts) : fecha }
+}
+
+/// Una obra de la lista `obras` (activa o archivada).
+struct ObraItem: Identifiable, Hashable {
+    var id: String { nombre }
+    let nombre: String
+    let archivada: Bool
 }

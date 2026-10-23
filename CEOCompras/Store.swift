@@ -18,6 +18,13 @@ final class Store {
     var encargados: [String] = []
     var proveedores: [String] = []
     var solicitudes: [Solicitud] = []
+    /// Listas de precios (`listasPrecios`).
+    var listasPrecios: [ListaPrecios] = []
+    /// Fichas de proveedores (`provData`) y obras con archivadas (`obras`), para Ajustes y Proveedores.
+    var fichasProveedores: [FichaProveedor] = []
+    var obrasTodas: [ObraItem] = []
+    /// Contactos de WhatsApp (`waContacts`).
+    var contactosWA: [ContactoWA] = []
     /// Todo el historial, del más nuevo al más viejo (pestaña Actividad).
     var eventos: [EventoOC] = []
     var nextOCNum = 858
@@ -30,8 +37,8 @@ final class Store {
     var aviso: String?
 
     /// Nodos que se leen (dentro de la base real o de la de prueba).
-    static let nodos = ["config", "ordenes", "obras", "encargados", "historial", "obrasData", "provData", "proveedores", "solicitudes"]
-    /// Los contactos de WhatsApp se leen siempre de la base real (en prueba no se manda nada).
+    static let nodos = ["config", "ordenes", "obras", "encargados", "historial", "obrasData", "provData", "proveedores", "solicitudes", "listasPrecios"]
+    /// Contactos de WhatsApp (en modo prueba se leen de la copia; igual no se manda nada).
     static let nodoContactos = "waContacts"
     /// Para guardar, todos estos tienen que haber llegado en vivo (evita repetir el bug de duplicados de agosto).
     static let nodosParaGuardar: Set<String> = ["config", "ordenes", "obrasData", "provData", "proveedores"]
@@ -68,7 +75,7 @@ final class Store {
         tareas.forEach { $0.cancel() }
         let gen = generacion
         tareas = Store.nodos.map { escuchar($0, ruta: prefijo + $0, gen: gen) }
-            + [escuchar(Store.nodoContactos, ruta: Store.nodoContactos, gen: gen)]
+            + [escuchar(Store.nodoContactos, ruta: prefijo + Store.nodoContactos, gen: gen)]
     }
 
     func reconectar() async {
@@ -100,6 +107,9 @@ final class Store {
         proveedores = []
         solicitudes = []
         eventos = []
+        listasPrecios = []
+        fichasProveedores = []
+        obrasTodas = []
         conectado = false
         cargarCache()
         conectar()
@@ -137,6 +147,8 @@ final class Store {
         if nodo == Store.nodoContactos {
             arbolContactos = JSONTree.aplicar(arbolContactos, evento: evento, ruta: ruta, dato: dato)
             waContacts = JSONTree.lista(arbolContactos).compactMap { $0 as? [String: Any] }
+            contactosWA = waContacts.map { ContactoWA(nombre: texto($0["nombre"]), numero: texto($0["numero"]),
+                                                      apikey: texto($0["apikey"]), rol: texto($0["rol"])) }
             return
         }
         arboles[nodo] = JSONTree.aplicar(arboles[nodo], evento: evento, ruta: ruta, dato: dato)
@@ -178,6 +190,14 @@ final class Store {
                 verificarFaceIDContraConfig()
             }
         case "obras":
+            var vistasT = Set<String>()
+            obrasTodas = JSONTree.lista(a).compactMap { o -> ObraItem? in
+                var item: ObraItem?
+                if let s = o as? String { item = ObraItem(nombre: s, archivada: false) }
+                else if let d = o as? [String: Any] { item = ObraItem(nombre: texto(d["nombre"]), archivada: verdadero(d["archivada"])) }
+                guard let item, !item.nombre.isEmpty, vistasT.insert(item.nombre).inserted else { return nil }
+                return item
+            }
             // obras.filter(oA).map(oN) de la web
             var vistas = Set<String>()
             obras = JSONTree.lista(a).compactMap { o -> String? in
@@ -195,8 +215,13 @@ final class Store {
         case "solicitudes":
             solicitudes = (a as? [String: Any] ?? [:]).compactMap { Solicitud(clave: $0.key, $0.value) }
                 .filter { $0.estado != "archivada" }.sorted { $0.ts > $1.ts }
+        case "provData":
+            fichasProveedores = (a as? [String: Any] ?? [:]).compactMap { FichaProveedor(clave: $0.key, $0.value) }
+                .sorted { $0.nombre.localizedCompare($1.nombre) == .orderedAscending }
+        case "listasPrecios":
+            listasPrecios = (a as? [String: Any] ?? [:]).compactMap { ListaPrecios(clave: $0.key, $0.value) }
         default:
-            break   // obrasData y provData se consultan directo al guardar
+            break   // obrasData se consulta directo al guardar
         }
     }
 
