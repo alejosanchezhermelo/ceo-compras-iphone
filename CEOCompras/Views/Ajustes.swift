@@ -102,16 +102,6 @@ struct PantallaAjustes: View {
             }
             Button("Bloquear ahora") { store.bloquear() }
         }
-        Section {
-            Toggle("Modo prueba", isOn: Binding(get: { store.modoPrueba }, set: { store.cambiarModoPrueba($0) }))
-                .tint(.red)
-        } header: {
-            Text("Modo prueba")
-        } footer: {
-            Text(store.modoPrueba
-                 ? "Activado: ves y guardás en una COPIA aparte de la base (franja roja). Tus datos reales no se tocan y no se mandan WhatsApps."
-                 : "Apagado: trabajás con tus datos reales. Prendelo para probar algo nuevo sin riesgo.")
-        }
         Section("Conexión") {
             LabeledContent("Estado", value: store.conectado ? "En vivo" : "Sin conexión")
             LabeledContent("Órdenes", value: "\(store.ordenes.count)")

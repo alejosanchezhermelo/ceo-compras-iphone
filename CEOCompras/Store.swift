@@ -3,7 +3,7 @@ import CryptoKit
 
 /// Estado de toda la app.
 /// - Datos reales: SOLO LECTURA (mientras `Config.escrituraReal` sea false).
-/// - Modo prueba: lee y escribe en `pruebas-iphone/`, una copia aparte de la base. Nunca toca las OC reales.
+/// - (El modo prueba se sacó el 26/10: siempre datos reales.)
 @Observable @MainActor
 final class Store {
     enum Fase { case bloqueada, necesitaCodigo, adentro }
@@ -11,7 +11,9 @@ final class Store {
     var fase: Fase = .bloqueada
     /// Ya entró al menos una vez en esta sesión (la lista queda armada debajo del bloqueo).
     var haEntrado = false
-    var modoPrueba = UserDefaults.standard.bool(forKey: "modo-prueba")
+    /// El "modo prueba" (copia aparte de la base) se usó para probar la app y se sacó el 26/10 a pedido de Alejo:
+    /// la app trabaja siempre con los datos reales. Queda en false para no tocar el resto del código.
+    var modoPrueba: Bool { false }
     var ordenes: [OC] = []
     var eventosPorOC: [String: [EventoOC]] = [:]
     var obras: [String] = []
@@ -59,6 +61,9 @@ final class Store {
     @ObservationIgnored private var faceIDEnCurso = false
 
     init() {
+        // limpiar restos del modo prueba que ya no existe
+        UserDefaults.standard.removeObject(forKey: "modo-prueba")
+        try? FileManager.default.removeItem(at: Store.archivoCache(prueba: true))
         cargarCache()
         conectar()
     }
@@ -88,31 +93,6 @@ final class Store {
         mensajeConexion = nil
         conectar()
         Task { await entrarConFaceID() }
-    }
-
-    func cambiarModoPrueba(_ activar: Bool) {
-        guard activar != modoPrueba else { return }
-        modoPrueba = activar
-        UserDefaults.standard.set(activar, forKey: "modo-prueba")
-        generacion += 1
-        tareas.forEach { $0.cancel() }
-        tareaCache?.cancel()
-        arboles = [:]
-        nodosEnVivo = []
-        configEnVivo = false
-        ordenes = []
-        eventosPorOC = [:]
-        obras = []
-        encargados = []
-        proveedores = []
-        solicitudes = []
-        eventos = []
-        listasPrecios = []
-        fichasProveedores = []
-        obrasTodas = []
-        conectado = false
-        cargarCache()
-        conectar()
     }
 
     // El Store vive mientras viva la app, así que se lo toma directo (sin "weak").
