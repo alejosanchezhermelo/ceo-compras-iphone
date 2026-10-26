@@ -5,8 +5,8 @@ struct ItemOC: Identifiable, Hashable {
     let desc: String
     let cant: String
     let unit: String
-    /// El PDF de la web lee `it.unidad`, pero las OC guardan la unidad en `unit`, así que en el
-    /// PDF la columna "Unidad" sale vacía. Se replica igual para que los PDF sean idénticos.
+    /// Las OC guardan la unidad en `unit`; `unidad` queda solo como respaldo. El PDF (web e iPhone,
+    /// desde 2026-10-26) usa `unit || unidad`.
     let unidad: String
 }
 

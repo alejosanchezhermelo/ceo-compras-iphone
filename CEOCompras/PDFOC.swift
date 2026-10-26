@@ -105,8 +105,8 @@ enum PDFOC {
         if !d.responsable.isEmpty { escribir("Responsable: \(d.responsable)", 20, y, size: 10); y += 6 }
         escribir("Proveedor: " + d.proveedor.uppercased(), 20, y + 2, size: 10, negrita: true)
 
-        // String(it.cant || '1') y it.unidad (ver nota en ItemOC)
-        let filas = d.items.map { [$0.desc, $0.cant.isEmpty ? "1" : $0.cant, $0.unidad] }
+        // String(it.cant || '1') y it.unit || it.unidad (igual que la web desde 2026-10-26)
+        let filas = d.items.map { [$0.desc, $0.cant.isEmpty ? "1" : $0.cant, $0.unit.isEmpty ? $0.unidad : $0.unit] }
         var fy = tabla(filas, desde: y + 8, ctx: ctx) + 6
 
         if !d.notas.isEmpty { escribir("Obs: " + d.notas, 20, fy, size: 9); fy += 8 }
