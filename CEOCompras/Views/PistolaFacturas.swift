@@ -142,7 +142,7 @@ struct PistolaFacturas: View {
     @ViewBuilder private var factura: some View {
         if let f {
             let prov = store.proveedorPorCuit(f.cuit)
-            let lista = store.ocsParaFactura(proveedor: prov, busqueda: busqueda, tildadas: [])
+            let lista = listaOC(prov)
             VStack(alignment: .leading, spacing: 10) {
                 HStack(alignment: .firstTextBaseline) {
                     Text(f.num).font(T.mono(15, .medium)).foregroundStyle(T.tx)
@@ -158,7 +158,7 @@ struct PistolaFacturas: View {
                 }
                 TextField("🔍 Buscar OC, obra o proveedor", text: $busqueda).campoPWA()
                 Text(lista.isEmpty ? "No hay OC sin factura para mostrar. Probá el buscador."
-                                   : "Tocá la OC de esta factura (se le asigna el total):")
+                                   : "Tocá la OC de esta factura (se le asigna el total; si la OC ya tiene otra factura, se suman):")
                     .font(T.sans(12)).foregroundStyle(T.tx3)
                 VStack(spacing: 6) {
                     ForEach(lista.prefix(40)) { o in
@@ -168,6 +168,9 @@ struct PistolaFacturas: View {
                                     Text("OC \(o.num)").font(T.syne(15)).foregroundStyle(T.bl)
                                     Text((o.obra.isEmpty ? "—" : o.obra) + (o.proveedor.isEmpty ? "" : " · \(o.proveedor)"))
                                         .font(T.sans(12)).foregroundStyle(T.tx2).lineLimit(1)
+                                    if let ya = facturaPrevia(o) {
+                                        Text("Ya tiene la \(ya) · esta se SUMA").font(T.sans(11, .semibold)).foregroundStyle(T.am)
+                                    }
                                 }
                                 Spacer()
                                 Image(systemName: "checkmark.circle").font(.system(size: 22)).foregroundStyle(T.bl)
@@ -281,7 +284,8 @@ struct PistolaFacturas: View {
         guard let f, !trabajando else { return }
         trabajando = true
         Task {
-            if let e = await store.guardarFacturaQR(num: f.num, total: f.total, cuit: f.cuit, importes: [o.id: f.total]) {
+            let r = await store.guardarFacturaPistola(o, num: f.num, total: f.total, cuit: f.cuit)
+            if let e = r.error {
                 trabajando = false
                 vibrar(.error)
                 error = e
@@ -299,7 +303,8 @@ struct PistolaFacturas: View {
                                            proveedor: o.proveedor, obra: o.obra))
             vibrar(.success)
             volverAEsperar()
-            mostrar("✓ \(f.num) → OC \(o.num)" + extra, ok: true)
+            mostrar((r.cantidad > 1 ? "✓ \(f.num) SUMADA a OC \(o.num) (ahora tiene \(r.cantidad) facturas)"
+                                    : "✓ \(f.num) → OC \(o.num)") + extra, ok: true)
         }
     }
 
@@ -310,12 +315,34 @@ struct PistolaFacturas: View {
         }
         trabajando = true
         Task {
-            let e = await store.quitarFacturas(o)
+            let e = await store.quitarFacturaPistola(o, num: c.facNum)
             trabajando = false
             if let e { error = e; return }
             cargadas.removeAll { $0.id == c.id }
             mostrar("Factura \(c.facNum) sacada de la OC \(c.ocNum)", ok: true)
         }
+    }
+
+    /// OC sin factura del proveedor (o de la búsqueda) + las de esta tanda que coinciden, para poder sumarles otra.
+    private func listaOC(_ prov: FichaProveedor?) -> [OC] {
+        let enTanda = Set(cargadas.map(\.ocId))
+        let q = busqueda.trimmingCharacters(in: .whitespaces).lowercased()
+        let deTanda = store.ordenes.filter { o in
+            guard enTanda.contains(o.id) else { return false }
+            if !q.isEmpty {
+                return o.num.lowercased().contains(q) || o.proveedor.lowercased().contains(q) || o.obra.lowercased().contains(q)
+            }
+            guard let p = prov else { return true }
+            return o.provIdGuardado == p.id || (!o.proveedor.isEmpty && o.proveedor.lowercased() == p.nombre.lowercased())
+        }
+        let resto = store.ocsParaFactura(proveedor: prov, busqueda: busqueda, tildadas: []).filter { !enTanda.contains($0.id) }
+        return deTanda.sorted { $0.numeroEntero > $1.numeroEntero } + resto
+    }
+
+    /// N° de la factura que ya tiene la OC (de esta tanda o de la base), si tiene.
+    private func facturaPrevia(_ o: OC) -> String? {
+        if let c = cargadas.last(where: { $0.ocId == o.id }) { return c.facNum }
+        return o.tieneFactura ? (o.facturaPrincipal?.num ?? "factura") : nil
     }
 
     private func mostrar(_ t: String, ok: Bool, segundos: Double = 2.2) {
@@ -330,6 +357,71 @@ struct PistolaFacturas: View {
 
     private func vibrar(_ t: UINotificationFeedbackGenerator.FeedbackType) {
         UINotificationFeedbackGenerator().notificationOccurred(t)
+    }
+}
+
+// MARK: Guardar / deshacer en modo pistola
+
+extension Store {
+    /// Facturas de una OC leídas del nodo crudo de la base (misma regla que `OC`).
+    nonisolated static func facturasDe(_ d: [String: Any]) -> [FacturaOC] {
+        func fac(_ v: Any) -> FacturaOC? {
+            guard let f = v as? [String: Any] else { return nil }
+            return FacturaOC(num: texto(f["num"]), importe: numero(f["importe"]), cuit: texto(f["cuit"]),
+                             total: numero(f["total"]), ts: numero(f["ts"]))
+        }
+        guard verdadero(d["factura"]), let f = d["factura"].flatMap(fac) else { return [] }
+        let varias = JSONTree.lista(d["facturas"]).compactMap(fac)
+        return varias.isEmpty ? [f] : varias
+    }
+
+    /// Lee la OC de la base EN ESE MOMENTO (la copia en memoria puede venir atrasada unos segundos:
+    /// así se pisó la 0028-00112426 de la OC 1572 el 26/10).
+    private func facturasEnLaBase(_ o: OC) async throws -> [FacturaOC] {
+        let (v, _) = try await Firebase.shared.leerConHuella(prefijo + "ordenes/\(o.id)")
+        return (v as? [String: Any]).map { Store.facturasDe($0) } ?? []
+    }
+
+    /// Modo pistola: si la OC no tiene factura, la guarda (`guardarFacturaQR`); si ya tiene, la SUMA
+    /// (como `sumarFactura`: lista `facturas` + resumen con N° combinado e importe sumado). Nunca pisa.
+    func guardarFacturaPistola(_ o: OC, num: String, total: Double, cuit: String) async -> (error: String?, cantidad: Int) {
+        let previas: [FacturaOC]
+        do { previas = try await facturasEnLaBase(o) } catch {
+            return ("No se pudo revisar la OC. Revisá la conexión e intentá de nuevo.", 0)
+        }
+        if previas.isEmpty {
+            return (await guardarFacturaQR(num: num, total: total, cuit: cuit, importes: [o.id: total]), 1)
+        }
+        if previas.contains(where: { Facturas.mismoNum($0.num, num) }) {
+            return ("La factura \(num) ya está cargada en la OC \(o.num).", 0)
+        }
+        let ahora = Store.ahoraMs()
+        let lista = previas + [FacturaOC(num: num, importe: total, cuit: cuit, total: total, ts: Double(ahora))]
+        let d = Facturas.datos(lista, ahora: ahora)
+        var cambios: [String: Any] = [:]
+        for (k, v) in d { cambios["ordenes/\(o.id)/\(k)"] = v }
+        let totalNuevo = ((d["factura"] as? [String: Any])?["importe"] as? Double) ?? total
+        let (h, e) = evento("🧾 Factura \(num) (\(Formato.pesos(total))) sumada a OC \(o.num) — total \(Formato.pesos(totalNuevo))",
+                            tipo: "c", ocId: o.id, ts: ahora)
+        cambios[h] = e
+        return (await ejecutar(cambios), lista.count)
+    }
+
+    /// Deshacer en modo pistola: saca SOLO esa factura de la OC (las otras quedan).
+    func quitarFacturaPistola(_ o: OC, num: String) async -> String? {
+        let previas: [FacturaOC]
+        do { previas = try await facturasEnLaBase(o) } catch {
+            return "No se pudo revisar la OC. Revisá la conexión e intentá de nuevo."
+        }
+        guard let i = previas.firstIndex(where: { Facturas.mismoNum($0.num, num) }) else { return nil }
+        var lista = previas
+        lista.remove(at: i)
+        var cambios: [String: Any] = [:]
+        for (k, v) in Facturas.datos(lista, ahora: Store.ahoraMs()) { cambios["ordenes/\(o.id)/\(k)"] = v }
+        let (h, e) = evento(lista.isEmpty ? "🧾 Factura quitada de OC \(o.num)" : "🧾 Factura \(num) sacada de OC \(o.num)",
+                            tipo: "c", ocId: o.id)
+        cambios[h] = e
+        return await ejecutar(cambios)
     }
 }
 
