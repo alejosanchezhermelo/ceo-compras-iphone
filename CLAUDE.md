@@ -63,9 +63,8 @@ Repo PÚBLICO: https://github.com/alejosanchezhermelo/ceo-compras-iphone (rama `
   se anula si cambia.
 - OC formato viejo/nuevo: se lee `obra`/`proveedor` como texto (están en las 442 OC).
 - Filtros/orden = `renderC()`. Etiquetas = `cardOC()`. Facturas = `_facLista()`.
-- PDF = `generarPDFDoc()` (jsPDF + autoTable, medidas en mm). **La web lee `it.unidad` pero los
-  ítems guardan `unit`** → la columna Unidad sale vacía en la web; acá se replica igual a propósito.
-  Si Alejo pide arreglarlo, cambiarlo en los dos lados juntos.
+- PDF = `generarPDFDoc()` (jsPDF + autoTable, medidas en mm). Columna Unidad = `it.unit || it.unidad`
+  (arreglado en los dos lados el 2026-10-26, v0.13 + SW v33; antes salía vacía).
 
 ## Cómo se compila y publica (no hay Mac)
 1. Subir `MARKETING_VERSION` / `CURRENT_PROJECT_VERSION` en `project.yml`.
