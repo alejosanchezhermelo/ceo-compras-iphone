@@ -97,3 +97,11 @@ Repo PÚBLICO: https://github.com/alejosanchezhermelo/ceo-compras-iphone (rama `
 - Reglas de la web portadas: `Facturas.swift` (importe, N° combinado, CUIT). Listas guardadas enteras por la web → `editarLista` con ETag.
 - OJO: no repetir nombres de archivo entre carpetas (Xcode falla: pasó con Facturas.swift en v0.8).
 - OJO: NO usar TabView con 6 pestañas (iOS arma un menú "More" escondido; pasó en v0.8-0.10). Las pantallas van en un ZStack en `ContenidoPestanas`.
+
+## v0.14 (2026-10-26) — MODO PISTOLA en Facturas (pedido de Alejo: "que yo pueda elegir el modo pistola o normal")
+- Selector Normal / 🔫 Pistola arriba de la pestaña Facturas (se recuerda: `@AppStorage("facturas-modo-pistola")`). Modo Normal = igual que antes.
+- `Views/PistolaFacturas.swift`: cámara SIEMPRE prendida (pantalla completa); bip + vibración al leer; la factura va ENTERA a 1 OC con un toque (`guardarFacturaQR` con 1 importe); vuelve sola a esperar la próxima. Varias OC por factura → "Saltear" y cargarla en Normal.
+- Misma hoja todavía frente a la cámara → "ya la cargaste en esta tanda" (no la toma como duplicada). Ya cargada de antes → aviso rojo. QR trucho (Materiales Avenida) o sin QR → carga a mano ahí mismo.
+- CUIT que no está en el padrón: se busca la OC; al elegirla se le anota el CUIT al proveedor de la OC SOLO si no tenía.
+- Deshacer por factura = `quitarFacturas` (las candidatas no tenían factura).
+- Al terminar, en Facturas: tarjeta de la tanda + "Imprimir las N OC (un solo PDF)" (`registrarPDFsTanda`: anota "OC PDF No … generada" en todas en UN guardado; las que no tienen numOCPDF reciben números seguidos) → `PDFOC.tanda` (una OC por hoja, en orden de escaneo) → visor con imprimir/compartir. La lista vive en memoria (se pierde si se cierra la app; las facturas ya quedaron guardadas).
