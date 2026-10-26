@@ -31,6 +31,11 @@ struct PantallaFacturas: View {
     @State private var opcionesOC: OC?
     @State private var trabajando = false
     @State private var error: String?
+    // modo pistola (se recuerda la última elección)
+    @AppStorage("facturas-modo-pistola") private var modoPistola = false
+    @State private var pistolaAbierta = false
+    @State private var tanda: [CargadaPistola] = []
+    @State private var preguntaVaciar = false
 
     var body: some View {
         NavigationStack {
@@ -58,6 +63,11 @@ struct PantallaFacturas: View {
             .fileImporter(isPresented: $elegirPDF, allowedContentTypes: [.pdf]) { leerPDF($0) }
             .onChange(of: foto) { _, item in if let item { leerFoto(item) } }
             .fullScreenCover(isPresented: $camara) { camaraVista }
+            .fullScreenCover(isPresented: $pistolaAbierta) { PistolaFacturas(cargadas: $tanda) }
+            .confirmationDialog("¿Vaciar la lista de esta tanda?", isPresented: $preguntaVaciar, titleVisibility: .visible) {
+                Button("Vaciar la lista") { tanda = [] }
+                Button("Cancelar", role: .cancel) {}
+            } message: { Text("Las facturas quedan guardadas en sus OC; solo se borra esta lista.") }
             .sheet(item: $combo) { VisorPDF(archivo: $0) }
             .sheet(item: $opcionesOC) { OpcionesOC(oc: $0) }
             .alert(preguntaSuma ?? "", isPresented: Binding(get: { preguntaSuma != nil }, set: { if !$0 { preguntaSuma = nil } })) {
@@ -73,6 +83,99 @@ struct PantallaFacturas: View {
     // MARK: 1) Inicio: cómo entra la factura
 
     private var inicio: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Picker("Modo", selection: $modoPistola) {
+                Text("Normal").tag(false)
+                Text("🔫 Pistola").tag(true)
+            }
+            .pickerStyle(.segmented)
+            if modoPistola { inicioPistola } else { inicioNormal }
+        }
+    }
+
+    // MARK: 1b) Modo pistola: muchas facturas seguidas
+
+    private var inicioPistola: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            VStack(alignment: .leading, spacing: 10) {
+                Text("Para cargar una pila de facturas seguidas: la cámara queda prendida, apuntás al QR, tocás la OC y pasás a la siguiente. Cada factura va entera a una OC.")
+                    .font(T.sans(13)).foregroundStyle(T.tx3)
+                if !EscanerQR.disponible {
+                    Text("Este iPhone no puede usar la cámara para leer QR.").font(T.sans(13)).foregroundStyle(T.rd)
+                } else if !store.puedeEditar {
+                    Text("Guardar no está habilitado.").font(T.sans(13)).foregroundStyle(T.rd)
+                } else {
+                    Button { pistolaAbierta = true } label: {
+                        Text(tanda.isEmpty ? "🔫 Empezar a escanear" : "🔫 Seguir escaneando").font(T.sans(16, .semibold))
+                    }
+                    .buttonStyle(BotonGrande(color: T.bl))
+                }
+            }
+            .padding(14)
+            .tarjeta()
+            if !tanda.isEmpty { tarjetaTanda }
+        }
+    }
+
+    private var tarjetaTanda: some View {
+        let ids = ocsDeLaTanda()
+        return VStack(alignment: .leading, spacing: 10) {
+            Text("✅ \(tanda.count) factura\(tanda.count == 1 ? "" : "s") cargada\(tanda.count == 1 ? "" : "s") en esta tanda")
+                .font(T.sans(15, .bold)).foregroundStyle(Color(hex: 0x065F46))
+            VStack(alignment: .leading, spacing: 3) {
+                ForEach(tanda) { c in
+                    Text("\(c.facNum) → OC \(c.ocNum) · \(c.proveedor)").font(T.sans(12)).foregroundStyle(Color(hex: 0x065F46)).lineLimit(1)
+                }
+            }
+            Button {
+                imprimirTanda()
+            } label: {
+                Text("🖨️ Imprimir las \(ids.count) OC (un solo PDF)").font(T.sans(15, .semibold))
+            }
+            .buttonStyle(BotonGrande(color: T.bl))
+            .disabled(trabajando || ids.isEmpty)
+            if trabajando { HStack { ProgressView(); Text("Armando el PDF…").font(T.sans(13)).foregroundStyle(T.bl) } }
+            Button("Vaciar la lista (empezar otra tanda)") { preguntaVaciar = true }
+                .buttonStyle(BotonPWA(tipo: .blanco))
+        }
+        .padding(16)
+        .background(Color(hex: 0xECFDF5), in: RoundedRectangle(cornerRadius: 12))
+        .overlay(RoundedRectangle(cornerRadius: 12).stroke(Color(hex: 0xA7F3D0)))
+    }
+
+    /// OC de la tanda, sin repetir, en el orden en que se escanearon.
+    private func ocsDeLaTanda() -> [OC] {
+        var vistos = Set<String>()
+        return tanda.compactMap { c in
+            guard vistos.insert(c.ocId).inserted else { return nil }
+            return store.ordenes.first { $0.id == c.ocId }
+        }
+    }
+
+    /// Anota "OC PDF No … generada" en cada una (como imprimirlas de a una) y arma un solo PDF con todas.
+    private func imprimirTanda() {
+        let ocs = ocsDeLaTanda()
+        if ocs.isEmpty { return }
+        trabajando = true
+        Task {
+            var nums: [String: Int] = [:]
+            if store.puedeEditar {
+                let r = await store.registrarPDFsTanda(ocs)
+                if let e = r.error { trabajando = false; error = e; return }
+                nums = r.nums
+            }
+            trabajando = false
+            do {
+                let titulo = "OC de \(ocs.count) facturas"
+                let url = try PDFOC.tanda(ocs.map { ($0, nums[$0.id] ?? $0.numOCPDF ?? Int($0.num) ?? 0) }, nombre: titulo)
+                combo = ArchivoPDF(url: url, titulo: titulo)
+            } catch {
+                self.error = "No se pudo armar el PDF"
+            }
+        }
+    }
+
+    private var inicioNormal: some View {
         VStack(alignment: .leading, spacing: 10) {
             Text("La app lee sola el número y el importe del QR de AFIP. No hace falta descargar la factura: alcanza con la cámara.")
                 .font(T.sans(13)).foregroundStyle(T.tx3)
