@@ -369,7 +369,7 @@ struct OpcionesOC: View {
             .disabled(datos == nil)
         }
         .padding(20)
-        .background(Color.white)
+        .fondoHoja()
         .presentationDetents([.medium, .large])
         .presentationDragIndicator(.visible)
         .sheet(item: $pdfParaVer) { VisorPDF(archivo: $0) }

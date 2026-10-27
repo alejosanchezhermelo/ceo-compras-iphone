@@ -145,7 +145,23 @@ struct ContenidoPestanas: View {
         }
     }
 
-    private var barra: some View {
+    /// En iOS 26: barra de vidrio flotante (Liquid Glass) y la pestaña elegida con una pastilla azul clara.
+    /// Antes de iOS 26: la barra de siempre, pegada abajo (igual a `#mobileNav` de la PWA).
+    @ViewBuilder private var barra: some View {
+        if #available(iOS 26.0, *) {
+            botonesBarra(vidrio: true)
+                .padding(.horizontal, 6).padding(.vertical, 5)
+                .glassEffect(.regular, in: Capsule())
+                .padding(.horizontal, 10)
+                .padding(.bottom, 2)
+        } else {
+            botonesBarra(vidrio: false)
+                .background(T.sf.ignoresSafeArea(edges: .bottom))
+                .overlay(alignment: .top) { Rectangle().fill(T.bd).frame(height: 1) }
+        }
+    }
+
+    private func botonesBarra(vidrio: Bool) -> some View {
         HStack(spacing: 0) {
             ForEach(items.indices, id: \.self) { i in
                 let elegida = pestana == i
@@ -154,17 +170,22 @@ struct ContenidoPestanas: View {
                         Image(systemName: items[i].1).font(.system(size: 18, weight: elegida ? .semibold : .regular))
                         Text(items[i].0).font(T.mono(8, .medium)).lineLimit(1).minimumScaleFactor(0.7)
                     }
-                    .foregroundStyle(elegida ? T.bl : T.tx3)
+                    .foregroundStyle(elegida ? T.bl : (vidrio ? T.tx2 : T.tx3))
                     .frame(maxWidth: .infinity)
                     .padding(.top, 7).padding(.bottom, 4)
-                    .background(alignment: .top) {
-                        if elegida { Rectangle().fill(T.bl).frame(height: 2) }
+                    .background {
+                        if elegida {
+                            if vidrio {
+                                Capsule().fill(T.bl.opacity(0.12))
+                            } else {
+                                VStack { Rectangle().fill(T.bl).frame(height: 2); Spacer() }
+                            }
+                        }
                     }
+                    .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
             }
         }
-        .background(T.sf.ignoresSafeArea(edges: .bottom))
-        .overlay(alignment: .top) { Rectangle().fill(T.bd).frame(height: 1) }
     }
 }

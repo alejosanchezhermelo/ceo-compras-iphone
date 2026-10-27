@@ -113,8 +113,7 @@ struct ListaOC: View {
                                 .font(T.sans(14, .bold))
                                 .foregroundStyle(.white)
                                 .padding(.horizontal, 22).padding(.vertical, 14)
-                                .background(T.bl, in: Capsule())
-                                .shadow(color: T.bl.opacity(0.4), radius: 8, y: 4)
+                                .vidrioAzul()
                         }
                         .buttonStyle(.plain)
                     }
