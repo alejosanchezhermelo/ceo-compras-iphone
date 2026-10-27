@@ -100,6 +100,8 @@ struct Divisor: View {
 struct BotonPWA: ButtonStyle {
     enum Tipo { case azul, blanco, color(Color), suave(Color, Color, Color) }
     var tipo: Tipo = .azul
+    /// true = ocupa todo el ancho; false = del tamaño del texto (botones en fila que bajan de renglón).
+    var lleno = true
     func makeBody(configuration: Configuration) -> some View {
         let (fondo, texto, borde): (Color, Color, Color) = {
             switch tipo {
@@ -112,7 +114,7 @@ struct BotonPWA: ButtonStyle {
         return configuration.label
             .font(T.sans(13, .medium))
             .padding(.horizontal, 14).padding(.vertical, 9)
-            .frame(maxWidth: .infinity)
+            .frame(maxWidth: lleno ? CGFloat.infinity : nil)
             .background(fondo.opacity(configuration.isPressed ? 0.8 : 1), in: RoundedRectangle(cornerRadius: 8))
             .overlay(RoundedRectangle(cornerRadius: 8).stroke(borde, lineWidth: 1))
             .foregroundStyle(texto)

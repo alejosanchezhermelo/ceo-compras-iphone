@@ -16,6 +16,22 @@ extension Color {
     })
 }
 
+extension Color {
+    /// "#1A3E6F" o "1A3E6F" → color. Devuelve nil si no es un color válido.
+    init?(hexTexto: String) {
+        var t = hexTexto.trimmingCharacters(in: .whitespaces)
+        if t.hasPrefix("#") { t.removeFirst() }
+        if t.count == 3 { t = t.map { "\($0)\($0)" }.joined() }
+        guard t.count == 6, let v = UInt32(t, radix: 16) else { return nil }
+        self.init(hex: v)
+    }
+}
+
+extension Rubro {
+    /// Color del rubro; si no se puede leer, gris.
+    var tinta: Color { Color(hexTexto: color) ?? T.tx2 }
+}
+
 /// Etiqueta de color, como los "tag" de la web (`.tag` + `.tp` / `.tpa` / `.te` / `.to`).
 struct Etiqueta: View {
     let texto: String
@@ -54,6 +70,18 @@ struct Etiqueta: View {
     static func factura(_ f: FacturaOC) -> Etiqueta {
         Etiqueta(texto: "🧾 Fact. \(f.num)" + (f.importe.map { " · " + Formato.pesos($0) } ?? ""),
                  fondo: T.gnL, color: T.gn, borde: T.gnM)
+    }
+
+    /// `.rubro-tag` de la web: fondo del color del rubro muy claro, letra y borde del mismo color.
+    static func rubro(_ r: Rubro) -> some View {
+        Text(r.nombre)
+            .font(T.sans(11, .semibold))
+            .lineLimit(1)
+            .padding(.horizontal, 9)
+            .padding(.vertical, 2)
+            .background(r.tinta.opacity(0x22 / 255.0), in: Capsule())
+            .overlay(Capsule().stroke(r.tinta.opacity(0x55 / 255.0), lineWidth: 1))
+            .foregroundStyle(r.tinta)
     }
 
     static func solicitud() -> Etiqueta {

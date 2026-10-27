@@ -136,7 +136,7 @@ struct ContenidoPestanas: View {
 
     @ViewBuilder private func pantalla(_ i: Int) -> some View {
         switch i {
-        case 0: ListaOC()
+        case 0: ListaOC(abrirProveedores: { visitadas.insert(4); pestana = 4 })
         case 1: PantallaActividad()
         case 2: PantallaAjustes()
         case 3: PantallaPrecios()

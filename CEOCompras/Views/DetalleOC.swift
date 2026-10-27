@@ -1,10 +1,10 @@
 import SwiftUI
 
-/// Ficha de una OC (la tarjeta abierta de la PWA). Se actualiza sola si la cambian desde la PC.
-struct DetalleOC: View {
+/// Lo que se ve al abrir una OC en la lista (`.ocb` de `cardOC` en la PWA): se despliega ahí mismo,
+/// debajo de la tarjeta, igual que en la web. Se actualiza solo si la cambian desde la PC.
+struct CuerpoOC: View {
     @Environment(Store.self) private var store
-    @Environment(\.dismiss) private var dismiss
-    let id: String
+    let oc: OC
 
     @State private var editar = false
     @State private var opcionesPDF: OC?
@@ -26,111 +26,12 @@ struct DetalleOC: View {
     }
 
     var body: some View {
-        if let oc = store.ordenes.first(where: { $0.id == id }) {
-            ficha(oc)
-        } else {
-            VStack(spacing: 8) {
-                Image(systemName: "doc.questionmark").font(.largeTitle).foregroundStyle(T.tx3)
-                Text("La OC ya no está").font(T.syne(16))
-                Text("Puede haber sido eliminada.").font(T.sans(13)).foregroundStyle(T.tx2)
-            }
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .background(T.bg)
-        }
-    }
-
-    private func ficha(_ oc: OC) -> some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 12) {
-                if store.modoPrueba { FranjaPrueba() }
-                encabezado(oc)
-                cuerpo(oc)
-            }
-            .padding(14)
-        }
-        .background(T.bg)
-        .scrollDismissesKeyboard(.interactively)
-        .navigationTitle("OC \(oc.num)")
-        .navigationBarTitleDisplayMode(.inline)
-        .sheet(isPresented: $editar) { FormularioOC(editando: oc, numeroSugerido: store.nextOCNum) }
-        .sheet(item: $opcionesPDF) { o in OpcionesOC(oc: o) }
-        .alert(pregunta?.titulo ?? "", isPresented: Binding(get: { pregunta != nil }, set: { if !$0 { pregunta = nil } }),
-               presenting: pregunta) { p in
-            Button(p.boton, role: p.destructiva ? .destructive : nil) { p.accion() }
-            Button("Cancelar", role: .cancel) {}
-        }
-        .alert("No se guardó", isPresented: Binding(get: { error != nil }, set: { if !$0 { error = nil } })) {
-            Button("OK", role: .cancel) {}
-        } message: { Text(error ?? "") }
-    }
-
-    // MARK: Encabezado (tarjeta cerrada de la lista + datos)
-
-    private func encabezado(_ oc: OC) -> some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Renglones(espacio: 5) {
-                Text(oc.num.isEmpty ? "—" : oc.num).font(T.syne(18)).foregroundStyle(T.bl)
-                if oc.urgente { Etiqueta.urgente() }
-                Etiqueta.estado(oc)
-                if !oc.obra.isEmpty { Etiqueta.obra(oc.obra) }
-                if let f = oc.facturaPrincipal { Etiqueta.factura(f) }
-            }
-            Text(oc.proveedor.isEmpty ? "Sin proveedor" : oc.proveedor).font(T.syne(17, .semibold)).foregroundStyle(T.tx)
-            VStack(alignment: .leading, spacing: 3) {
-                dato("Encargado", oc.responsable)
-                dato("Entrega", oc.fecha.isEmpty ? "sin fecha" : oc.fecha)
-            }
+        VStack(alignment: .leading, spacing: 14) {
             if !oc.solRef.isEmpty {
                 Text("📋 Solicitud de \(oc.solRef)").font(T.mono(11)).foregroundStyle(T.pp)
             }
-        }
-        .padding(.vertical, 13).padding(.horizontal, 16)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .tarjeta(fondo: oc.urgente ? T.urgenteFondo : T.sf, bordeIzq: oc.urgente ? T.urgente : nil)
-    }
-
-    private func dato(_ t: String, _ v: String) -> some View {
-        (Text(t + ": ").foregroundStyle(T.tx3) + Text(v.isEmpty ? "—" : v).foregroundStyle(T.tx2))
-            .font(T.mono(12))
-    }
-
-    // MARK: Cuerpo (`.ocb` de la PWA)
-
-    private func cuerpo(_ oc: OC) -> some View {
-        VStack(alignment: .leading, spacing: 14) {
             if !oc.notas.isEmpty { CajaNotas(texto: oc.notas) }
-
-            // Materiales
-            VStack(alignment: .leading, spacing: 8) {
-                Rotulo(texto: "Materiales")
-                VStack(spacing: 0) {
-                    HStack {
-                        Text("Descripción").frame(maxWidth: .infinity, alignment: .leading)
-                        Text("Cant.").frame(width: 56)
-                        Text("Unidad").frame(width: 56, alignment: .leading)
-                    }
-                    .font(T.mono(11)).foregroundStyle(T.tx3)
-                    .padding(.vertical, 5)
-                    .overlay(alignment: .bottom) { Rectangle().fill(T.bd).frame(height: 1) }
-                    if oc.items.isEmpty {
-                        Text("Sin ítems").font(T.sans(13)).foregroundStyle(T.tx3)
-                            .frame(maxWidth: .infinity, alignment: .leading).padding(.vertical, 6)
-                    }
-                    ForEach(oc.items) { it in
-                        HStack(alignment: .firstTextBaseline) {
-                            Text(it.desc).frame(maxWidth: .infinity, alignment: .leading)
-                            Text(it.cant).frame(width: 56)
-                            Text(it.unit).foregroundStyle(T.tx3).frame(width: 56, alignment: .leading)
-                        }
-                        .font(T.sans(13)).foregroundStyle(T.tx)
-                        .padding(.vertical, 6)
-                        .overlay(alignment: .bottom) {
-                            if it.id != oc.items.last?.id { Rectangle().fill(T.bd).frame(height: 1) }
-                        }
-                    }
-                }
-            }
-
+            materiales
             if !oc.comentario.isEmpty {
                 (Text("⚠ Faltantes: ").bold() + Text(oc.comentario))
                     .font(T.sans(13)).foregroundStyle(T.rd)
@@ -148,19 +49,62 @@ struct DetalleOC: View {
                     .background(T.gnL, in: RoundedRectangle(cornerRadius: 8))
                     .overlay(RoundedRectangle(cornerRadius: 8).stroke(T.gnM, lineWidth: 1))
             }
-
-            notasInternas(oc)
-            historial(oc)
-            if store.puedeEditar { facturas(oc) }
-            acciones(oc)
+            notasInternas
+            historial
+            if store.puedeEditar { facturas }
+            acciones
         }
         .padding(.horizontal, 16).padding(.vertical, 14)
-        .tarjeta()
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .sheet(isPresented: $editar) { FormularioOC(editando: oc, numeroSugerido: store.nextOCNum) }
+        .sheet(item: $opcionesPDF) { o in OpcionesOC(oc: o) }
+        .alert(pregunta?.titulo ?? "", isPresented: Binding(get: { pregunta != nil }, set: { if !$0 { pregunta = nil } }),
+               presenting: pregunta) { p in
+            Button(p.boton, role: p.destructiva ? .destructive : nil) { p.accion() }
+            Button("Cancelar", role: .cancel) {}
+        }
+        .alert("No se guardó", isPresented: Binding(get: { error != nil }, set: { if !$0 { error = nil } })) {
+            Button("OK", role: .cancel) {}
+        } message: { Text(error ?? "") }
+    }
+
+    // MARK: Materiales (`.itbl` de la PWA)
+
+    private var materiales: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Rotulo(texto: "Materiales")
+            VStack(spacing: 0) {
+                HStack {
+                    Text("Descripción").frame(maxWidth: .infinity, alignment: .leading)
+                    Text("Cant.").frame(width: 56)
+                    Text("Unidad").frame(width: 56, alignment: .leading)
+                }
+                .font(T.mono(11)).foregroundStyle(T.tx3)
+                .padding(.vertical, 5)
+                .overlay(alignment: .bottom) { Rectangle().fill(T.bd).frame(height: 1) }
+                if oc.items.isEmpty {
+                    Text("Sin ítems").font(T.sans(13)).foregroundStyle(T.tx3)
+                        .frame(maxWidth: .infinity, alignment: .leading).padding(.vertical, 6)
+                }
+                ForEach(oc.items) { it in
+                    HStack(alignment: .firstTextBaseline) {
+                        Text(it.desc).frame(maxWidth: .infinity, alignment: .leading)
+                        Text(it.cant).frame(width: 56)
+                        Text(it.unit).foregroundStyle(T.tx3).frame(width: 56, alignment: .leading)
+                    }
+                    .font(T.sans(13)).foregroundStyle(T.tx)
+                    .padding(.vertical, 6)
+                    .overlay(alignment: .bottom) {
+                        if it.id != oc.items.last?.id { Rectangle().fill(T.bd).frame(height: 1) }
+                    }
+                }
+            }
+        }
     }
 
     // MARK: Notas internas
 
-    private func notasInternas(_ oc: OC) -> some View {
+    private var notasInternas: some View {
         VStack(alignment: .leading, spacing: 6) {
             Divider().overlay(T.bd)
             Text("🔒 NOTAS INTERNAS (SOLO COMPRAS)").font(T.mono(10, .medium)).kerning(0.7).foregroundStyle(T.am)
@@ -177,7 +121,7 @@ struct DetalleOC: View {
             if store.puedeEditar {
                 HStack(spacing: 6) {
                     TextField("Agregar nota interna…", text: $notaNueva).campoPWA()
-                    Button("Agregar") { agregarNota(oc) }
+                    Button("Agregar") { agregarNota() }
                         .buttonStyle(BotonPWA(tipo: .color(T.am))).fixedSize()
                         .disabled(notaNueva.trimmingCharacters(in: .whitespaces).isEmpty || trabajando)
                 }
@@ -187,7 +131,7 @@ struct DetalleOC: View {
 
     // MARK: Historial
 
-    private func historial(_ oc: OC) -> some View {
+    private var historial: some View {
         VStack(alignment: .leading, spacing: 0) {
             Divider().overlay(T.bd).padding(.bottom, 10)
             Text("📋 HISTORIAL DE ESTA OC").font(T.mono(10, .medium)).kerning(0.7).foregroundStyle(T.tx3)
@@ -202,7 +146,7 @@ struct DetalleOC: View {
 
     // MARK: Facturas (`facQ` de la PWA)
 
-    private func facturas(_ oc: OC) -> some View {
+    private var facturas: some View {
         let sinCuit = (store.fichaProveedor(oc).map { $0.cuit.isEmpty }) ?? false
         return VStack(alignment: .leading, spacing: 8) {
             Text(oc.tieneFactura ? "🧾 FACTURAS DE ESTA OC" : "🧾 FACTURA DE ESTA OC")
@@ -213,7 +157,7 @@ struct DetalleOC: View {
                         Text(f.num + (f.importe.map { " — " + Formato.pesos($0) } ?? "")).font(T.sans(13))
                         Spacer()
                         Button {
-                            preguntarSacar(oc, i, f)
+                            preguntarSacar(i, f)
                         } label: { Image(systemName: "xmark").font(.system(size: 12, weight: .bold)).foregroundStyle(T.rd) }
                     }
                     .padding(.vertical, 3)
@@ -230,7 +174,7 @@ struct DetalleOC: View {
             if !oc.tieneFactura && sinCuit {
                 TextField("CUIT del proveedor (opcional)", text: $facCuit).keyboardType(.numberPad).campoPWA()
             }
-            Button(oc.tieneFactura ? "➕ Sumar factura" : "Guardar") { cargarFactura(oc) }
+            Button(oc.tieneFactura ? "➕ Sumar factura" : "Guardar") { cargarFactura() }
                 .buttonStyle(BotonPWA())
                 .disabled(trabajando)
             Text(oc.tieneFactura
@@ -243,36 +187,32 @@ struct DetalleOC: View {
         .overlay(RoundedRectangle(cornerRadius: 10).strokeBorder(T.bd, style: StrokeStyle(lineWidth: 1, dash: [4, 3])))
     }
 
-    // MARK: Botones de abajo (`cActs` de la PWA)
+    // MARK: Botones de abajo (`cActs` de la PWA): en una fila, mismo orden que la web
 
-    private func acciones(_ oc: OC) -> some View {
-        VStack(spacing: 8) {
+    private var acciones: some View {
+        VStack(alignment: .leading, spacing: 8) {
             Divider().overlay(T.bd)
-            HStack(spacing: 8) {
-                Button("📄 Generar OC") { generar(oc) }
-                    .buttonStyle(BotonPWA(tipo: .suave(T.blL, T.bl, T.blM)))
-                if store.puedeEditar && oc.estado != "entregado" {
-                    Button("✏️ Editar") { editar = true }
-                        .buttonStyle(BotonPWA(tipo: .suave(T.blL, T.bl, T.blM)))
-                }
-            }
-            if store.puedeEditar {
-                HStack(spacing: 8) {
+            Renglones(espacio: 8) {
+                Button("📄 Generar OC") { generar() }
+                    .buttonStyle(BotonPWA(tipo: .suave(T.blL, T.bl, T.blM), lleno: false))
+                if store.puedeEditar {
+                    if oc.tieneFactura {
+                        Button("🧾 Quitar factura") { preguntarQuitarTodas() }
+                            .buttonStyle(BotonPWA(tipo: .suave(T.blL, T.bl, T.blM), lleno: false))
+                    }
                     if oc.estado != "entregado" {
+                        Button("✏️ Editar") { editar = true }
+                            .buttonStyle(BotonPWA(tipo: .suave(T.blL, T.bl, T.blM), lleno: false))
                         if oc.urgente {
-                            Button("✓ Quitar urgente") { urgente(oc) }
-                                .buttonStyle(BotonPWA(tipo: .suave(T.sf2, T.tx3, T.bd)))
+                            Button("✓ Quitar urgente") { urgente() }
+                                .buttonStyle(BotonPWA(tipo: .suave(T.sf2, T.tx3, T.bd), lleno: false))
                         } else {
-                            Button("🔴 Marcar urgente") { urgente(oc) }
-                                .buttonStyle(BotonPWA(tipo: .suave(T.urgenteFondo, T.urgente, Color(hex: 0xE8AAAA))))
+                            Button("🔴 Marcar urgente") { urgente() }
+                                .buttonStyle(BotonPWA(tipo: .suave(T.urgenteFondo, T.urgente, Color(hex: 0xE8AAAA)), lleno: false))
                         }
                     }
-                    Button("🗑 Eliminar") { preguntarEliminar(oc) }
-                        .buttonStyle(BotonPWA(tipo: .suave(T.rdL, T.rd, T.rdM)))
-                }
-                if oc.tieneFactura {
-                    Button("🧾 Quitar factura") { preguntarQuitarTodas(oc) }
-                        .buttonStyle(BotonPWA(tipo: .suave(T.blL, T.bl, T.blM)))
+                    Button("🗑 Eliminar") { preguntarEliminar() }
+                        .buttonStyle(BotonPWA(tipo: .suave(T.rdL, T.rd, T.rdM), lleno: false))
                 }
             }
         }
@@ -293,43 +233,48 @@ struct DetalleOC: View {
         }
     }
 
-    private func generar(_ oc: OC) {
+    private func generar() {
+        let o = oc
         if store.puedeEditar {
-            correr({ await store.registrarPDF(oc) }) { opcionesPDF = oc }
+            correr({ await store.registrarPDF(o) }) { opcionesPDF = o }
         } else {
-            opcionesPDF = oc
+            opcionesPDF = o
         }
     }
 
-    private func urgente(_ oc: OC) {
-        correr({ await store.cambiarUrgente(oc) }, ok: oc.urgente ? "Urgente desactivado" : "🔴 OC marcada como urgente")
+    private func urgente() {
+        let o = oc
+        correr({ await store.cambiarUrgente(o) }, ok: o.urgente ? "Urgente desactivado" : "🔴 OC marcada como urgente")
     }
 
-    private func agregarNota(_ oc: OC) {
-        let t = notaNueva
-        correr({ await store.agregarNotaInterna(oc, t) }, ok: "📝 Nota agregada") { notaNueva = "" }
+    private func agregarNota() {
+        let o = oc, t = notaNueva
+        correr({ await store.agregarNotaInterna(o, t) }, ok: "📝 Nota agregada") { notaNueva = "" }
     }
 
-    private func preguntarEliminar(_ oc: OC) {
-        pregunta = Pregunta(titulo: "¿Eliminar la OC \(oc.num)? Esta acción no se puede deshacer.", boton: "Eliminar",
+    private func preguntarEliminar() {
+        let o = oc
+        pregunta = Pregunta(titulo: "¿Eliminar la OC \(o.num)? Esta acción no se puede deshacer.", boton: "Eliminar",
                             destructiva: true) {
-            correr({ await store.eliminarOC(oc) }, ok: "🗑 OC \(oc.num) eliminada") { dismiss() }
+            correr({ await store.eliminarOC(o) }, ok: "🗑 OC \(o.num) eliminada")
         }
     }
 
-    private func preguntarQuitarTodas(_ oc: OC) {
-        let n = oc.facturas.count
-        let t = (n > 1 ? "¿Quitar las \(n) facturas" : "¿Quitar la factura \(oc.facturaPrincipal?.num ?? "")")
-            + " de la OC \(oc.num)? La OC vuelve a las pendientes y la podés volver a cargar."
+    private func preguntarQuitarTodas() {
+        let o = oc
+        let n = o.facturas.count
+        let t = (n > 1 ? "¿Quitar las \(n) facturas" : "¿Quitar la factura \(o.facturaPrincipal?.num ?? "")")
+            + " de la OC \(o.num)? La OC vuelve a las pendientes y la podés volver a cargar."
         pregunta = Pregunta(titulo: t, boton: "Quitar") {
-            correr({ await store.quitarFacturas(oc) }, ok: "Factura desvinculada")
+            correr({ await store.quitarFacturas(o) }, ok: "Factura desvinculada")
         }
     }
 
-    private func preguntarSacar(_ oc: OC, _ i: Int, _ f: FacturaOC) {
-        if oc.facturas.count < 2 { preguntarQuitarTodas(oc); return }
-        pregunta = Pregunta(titulo: "¿Sacar la factura \(f.num) de la OC \(oc.num)? Las demás facturas quedan.", boton: "Sacar") {
-            correr({ await store.quitarFactura(oc, indice: i) }, ok: "Factura sacada")
+    private func preguntarSacar(_ i: Int, _ f: FacturaOC) {
+        let o = oc
+        if o.facturas.count < 2 { preguntarQuitarTodas(); return }
+        pregunta = Pregunta(titulo: "¿Sacar la factura \(f.num) de la OC \(o.num)? Las demás facturas quedan.", boton: "Sacar") {
+            correr({ await store.quitarFactura(o, indice: i) }, ok: "Factura sacada")
         }
     }
 
@@ -342,27 +287,28 @@ struct DetalleOC: View {
         }
     }
 
-    private func cargarFactura(_ oc: OC) {
-        let sumando = oc.tieneFactura
-        if let e = store.validarFactura(oc, num: facNum, monto: facMonto, sumando: sumando) { error = e; return }
+    private func cargarFactura() {
+        let o = oc
+        let sumando = o.tieneFactura
+        if let e = store.validarFactura(o, num: facNum, monto: facMonto, sumando: sumando) { error = e; return }
         let num = facNum, monto = facMonto, cuit = facCuit
         var preguntas: [(String, String)] = []
-        if !sumando { preguntas += store.avisosCuit(oc, cuit).map { ($0, "Guardar igual") } }
-        if let r = store.avisoFacturaRepetida(oc, num: num, monto: monto, cuitEscrito: sumando ? "" : cuit) {
+        if !sumando { preguntas += store.avisosCuit(o, cuit).map { ($0, "Guardar igual") } }
+        if let r = store.avisoFacturaRepetida(o, num: num, monto: monto, cuitEscrito: sumando ? "" : cuit) {
             preguntas.append((sumando ? r.replacingOccurrences(of: "¿La cargo igual", with: "¿La sumo igual") : r,
                               sumando ? "Sumar igual" : "Cargar igual"))
         }
         enCadena(preguntas) {
             if sumando {
-                correr({ await store.sumarFactura(oc, num: num, monto: monto) }, ok: "✅ Factura sumada") {
+                correr({ await store.sumarFactura(o, num: num, monto: monto) }, ok: "✅ Factura sumada") {
                     facNum = ""; facMonto = ""
                 }
             } else {
-                correr({ await store.guardarFactura(oc, num: num, monto: monto, cuitEscrito: cuit) },
+                correr({ await store.guardarFactura(o, num: num, monto: monto, cuitEscrito: cuit) },
                        ok: "✅ Factura guardada — el Excel la toma en la próxima actualización") {
                     facNum = ""; facMonto = ""; facCuit = ""
                     // Como la web: al guardar la factura se abre la OC para imprimir o compartir
-                    generar(oc)
+                    generar()
                 }
             }
         }

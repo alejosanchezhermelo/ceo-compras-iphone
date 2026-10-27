@@ -1,8 +1,12 @@
 import SwiftUI
 
-/// Pestaña Órdenes, con el mismo diseño que la PWA en el celular.
+/// Pestaña Órdenes, igual que la PWA en el celular: las OC se abren ahí mismo en la lista (▼),
+/// botón flotante "➕ Nueva OC" y los botones Proveedores / Obras / Encargados abajo de los filtros.
 struct ListaOC: View {
     @Environment(Store.self) private var store
+    /// Lo que hace el botón 🏆 Proveedores (pasa a la pestaña Proveedores).
+    var abrirProveedores: () -> Void = {}
+
     @State private var busqueda = ""
     @State private var pestana: Pestana = .todos
     @State private var obra = ""
@@ -13,6 +17,10 @@ struct ListaOC: View {
     @State private var solicitudParaOC: Solicitud?
     @State private var pendienteOC: Solicitud?
     @State private var asignar: OC?
+    /// OC abiertas en la lista (`expanded` de la web).
+    @State private var abiertas: Set<String> = []
+    @State private var verObras = false
+    @State private var verEncargados = false
 
     var body: some View {
         let visibles = Filtro.aplicar(store.ordenes, pestana: pestana, obra: obra, encargado: encargado,
@@ -25,13 +33,12 @@ struct ListaOC: View {
                         Label(m, systemImage: "wifi.slash").font(T.sans(12)).foregroundStyle(T.tx2)
                     }
                     estadisticas
+                    if verObras { PanelObras() }
+                    if verEncargados { PanelEncargados() }
                     buscador
                     selectorPestanas
                     filtros
-                    if store.puedeEditar {
-                        Button { nuevaOC = true } label: { Text("+ Nueva OC").font(T.sans(14, .semibold)) }
-                            .buttonStyle(BotonPWA())
-                    }
+                    botones
 
                     let importadas = store.importadasSinAsignar
                     if !importadas.isEmpty {
@@ -47,11 +54,16 @@ struct ListaOC: View {
                         ForEach(store.solicitudes) { s in
                             Button { verSolicitud = s } label: { TarjetaSolicitud(sol: s) }.buttonStyle(.plain)
                         }
-                        Divisor(texto: "📦 Órdenes de compra", n: visibles.count)
+                    }
+                    if !importadas.isEmpty || !store.solicitudes.isEmpty {
+                        Divisor(texto: "📦 Órdenes de compra", n: store.ordenes.count - importadas.count)
                     }
 
                     ForEach(visibles) { oc in
-                        NavigationLink(value: oc.id) { FilaOC(oc: oc, busqueda: busqueda) }.buttonStyle(.plain)
+                        TarjetaOC(oc: oc, rubro: store.rubros.first { $0.nombre == oc.rubro },
+                                  abierta: abiertas.contains(oc.id)) {
+                            if abiertas.contains(oc.id) { abiertas.remove(oc.id) } else { abiertas.insert(oc.id) }
+                        }
                     }
                     if visibles.isEmpty {
                         Text(store.ordenes.isEmpty ? "Cargando órdenes…" : "No hay órdenes en esta categoría")
@@ -61,16 +73,17 @@ struct ListaOC: View {
                 }
                 .padding(.horizontal, 14)
                 .padding(.top, 10)
-                .padding(.bottom, 24)
+                // lugar para que el botón flotante no tape la última OC
+                .padding(.bottom, 84)
             }
             .background(T.bg)
-            .scrollDismissesKeyboard(.immediately)
+            .scrollDismissesKeyboard(.interactively)
             .refreshable { await store.reconectar() }
-            .navigationDestination(for: String.self) { id in DetalleOC(id: id) }
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) { EncabezadoPedidos() }
             }
+            .overlay { botonFlotante }
             .sheet(isPresented: $nuevaOC) { FormularioOC(editando: nil, numeroSugerido: store.nextOCNum) }
             .sheet(item: $verSolicitud, onDismiss: {
                 if let s = pendienteOC { pendienteOC = nil; solicitudParaOC = s }
@@ -85,6 +98,31 @@ struct ListaOC: View {
     }
 
     // MARK: Partes
+
+    /// `#fabNuevaOC` de la PWA: abajo a la derecha, arriba de la barra. Con el teclado abierto se esconde.
+    private var botonFlotante: some View {
+        GeometryReader { g in
+            if store.puedeEditar && g.safeAreaInsets.bottom <= 120 {
+                // Con Spacer (y no con un frame grande) para que el resto de la pantalla se siga pudiendo tocar
+                VStack {
+                    Spacer()
+                    HStack {
+                        Spacer()
+                        Button { nuevaOC = true } label: {
+                            Text("➕ Nueva OC")
+                                .font(T.sans(14, .bold))
+                                .foregroundStyle(.white)
+                                .padding(.horizontal, 22).padding(.vertical, 14)
+                                .background(T.bl, in: Capsule())
+                                .shadow(color: T.bl.opacity(0.4), radius: 8, y: 4)
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+                .padding(.trailing, 20).padding(.bottom, 14)
+            }
+        }
+    }
 
     /// Los 3 recuadros de arriba (Total OC / Entregadas / Pendientes).
     private var estadisticas: some View {
@@ -112,7 +150,8 @@ struct ListaOC: View {
     private var buscador: some View {
         HStack(spacing: 8) {
             Image(systemName: "magnifyingglass").foregroundStyle(T.tx3)
-            TextField("Buscar por OC, proveedor, encargado, obra…", text: $busqueda)
+            TextField(pestana == .facturadas ? "Buscar por N° de factura, OC, proveedor…"
+                                             : "Buscar por OC, proveedor, encargado, obra…", text: $busqueda)
                 .font(T.sans(14))
                 .autocorrectionDisabled()
                 .textInputAutocapitalization(.never)
@@ -177,6 +216,26 @@ struct ListaOC: View {
         }
     }
 
+    /// Botones de la barra de herramientas de la web (`.toolbar`): 🏆 Proveedores, 🏗 Obras, 👷 Encargados
+    /// y + Nueva OC. (El 📊 Excel de la web no se trae: Alejo no lo usa.)
+    private var botones: some View {
+        VStack(spacing: 6) {
+            HStack(spacing: 6) {
+                Button("🏆 Proveedores") { abrirProveedores() }
+                    .buttonStyle(BotonPWA(tipo: .blanco))
+                Button("🏗 Obras") { withAnimation(.easeOut(duration: 0.15)) { verObras.toggle() } }
+                    .buttonStyle(BotonPWA(tipo: verObras ? .suave(T.blL, T.bl, T.blM) : .blanco))
+                Button("👷 Encargados") { withAnimation(.easeOut(duration: 0.15)) { verEncargados.toggle() } }
+                    .buttonStyle(BotonPWA(tipo: verEncargados ? .suave(T.gnL, T.gn, T.gnM) : .blanco))
+            }
+            .lineLimit(1).minimumScaleFactor(0.8)
+            if store.puedeEditar {
+                Button("+ Nueva OC") { nuevaOC = true }
+                    .buttonStyle(BotonPWA())
+            }
+        }
+    }
+
     private func chipFiltro(_ texto: String, activo: Bool) -> some View {
         HStack(spacing: 4) {
             Text(texto).font(T.sans(13, .medium)).lineLimit(1)
@@ -217,39 +276,56 @@ struct FranjaPrueba: View {
     }
 }
 
-/// Tarjeta de OC de la lista (`cardOC` cerrada).
-struct FilaOC: View {
+
+/// Tarjeta de OC de la lista (`cardOC` de la PWA). Al tocarla se abre ahí mismo (▼) y muestra todo.
+struct TarjetaOC: View {
     let oc: OC
-    var busqueda: String = ""
+    let rubro: Rubro?
+    let abierta: Bool
+    let alTocar: () -> Void
 
     var body: some View {
+        VStack(spacing: 0) {
+            Button(action: alTocar) { encabezado }.buttonStyle(.plain)
+            if abierta {
+                Rectangle().fill(T.bd).frame(height: 1)
+                CuerpoOC(oc: oc)
+            }
+        }
+        .tarjeta(fondo: oc.urgente ? T.urgenteFondo : T.sf, bordeIzq: oc.urgente ? T.urgente : nil)
+    }
+
+    private var encabezado: some View {
         HStack(alignment: .top, spacing: 10) {
             VStack(alignment: .leading, spacing: 4) {
-                Renglones(espacio: 5) {
+                Renglones(espacio: 6) {
                     Text(oc.num.isEmpty ? "—" : oc.num).font(T.syne(14)).foregroundStyle(T.bl)
                     if oc.urgente { Etiqueta.urgente() }
                     Etiqueta.estado(oc)
                     if !oc.obra.isEmpty { Etiqueta.obra(oc.obra) }
+                    if let rubro { Etiqueta.rubro(rubro) }
                     if !oc.remito.isEmpty { Etiqueta(texto: "🧾", fondo: T.gnL, color: T.gn, borde: T.gnM) }
                     if let f = oc.facturaPrincipal { Etiqueta.factura(f) }
                 }
                 Text((oc.proveedor.isEmpty ? "Sin proveedor" : oc.proveedor)
                      + (oc.responsable.isEmpty ? "" : " · " + oc.responsable))
                     .font(T.sans(13)).foregroundStyle(T.tx2)
+                    .frame(maxWidth: .infinity, alignment: .leading)
                 Text("Entrega: \(oc.fecha.isEmpty ? "sin fecha" : oc.fecha)")
                     .font(T.mono(11)).foregroundStyle(T.tx3)
             }
-            Spacer(minLength: 0)
-            Image(systemName: "chevron.right").font(.system(size: 12, weight: .semibold)).foregroundStyle(T.tx3)
+            Text("▼")
+                .font(.system(size: 10))
+                .foregroundStyle(T.tx3)
+                .rotationEffect(.degrees(abierta ? 180 : 0))
+                .animation(.easeOut(duration: 0.2), value: abierta)
                 .padding(.top, 3)
         }
         .padding(.vertical, 13).padding(.horizontal, 16)
         .frame(maxWidth: .infinity, alignment: .leading)
         .contentShape(Rectangle())
-        .tarjeta(fondo: oc.urgente ? T.urgenteFondo : T.sf, bordeIzq: oc.urgente ? T.urgente : nil)
     }
 }
-
 
 /// OC importada de PDF sin obra o encargado (`cardOCPdf`, borde ámbar).
 struct TarjetaImportada: View {

@@ -6,6 +6,7 @@ struct BorradorOC {
     var obra = ""
     var encargado = ""
     var proveedor = ""
+    var rubro = ""
     var tieneFecha = false
     var fecha = Date()
     var notas = ""
@@ -20,6 +21,7 @@ struct BorradorOC {
         obra = o.obra
         encargado = o.responsable
         proveedor = o.proveedor
+        rubro = o.rubro
         if let f = Fechas.desdeTexto(o.fecha) {
             tieneFecha = true
             fecha = f

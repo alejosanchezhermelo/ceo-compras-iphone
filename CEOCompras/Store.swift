@@ -18,6 +18,8 @@ final class Store {
     var encargados: [String] = []
     var proveedores: [String] = []
     var solicitudes: [Solicitud] = []
+    /// Rubros (`rubros`): nombre y color, para el campo Rubro y la etiqueta de color de la OC.
+    var rubros: [Rubro] = []
     /// Listas de precios (`listasPrecios`).
     var listasPrecios: [ListaPrecios] = []
     /// Fichas de proveedores (`provData`) y obras con archivadas (`obras`), para Ajustes y Proveedores.
@@ -37,7 +39,7 @@ final class Store {
     var aviso: String?
 
     /// Nodos que se leen (dentro de la base real o de la de prueba).
-    static let nodos = ["config", "ordenes", "obras", "encargados", "historial", "obrasData", "provData", "proveedores", "solicitudes", "listasPrecios"]
+    static let nodos = ["config", "ordenes", "obras", "encargados", "historial", "obrasData", "provData", "proveedores", "solicitudes", "listasPrecios", "rubros"]
     /// Contactos de WhatsApp (en modo prueba se leen de la copia; igual no se manda nada).
     static let nodoContactos = "waContacts"
     /// Para guardar, todos estos tienen que haber llegado en vivo (evita repetir el bug de duplicados de agosto).
@@ -106,6 +108,7 @@ final class Store {
         encargados = []
         proveedores = []
         solicitudes = []
+        rubros = []
         eventos = []
         listasPrecios = []
         fichasProveedores = []
@@ -221,6 +224,13 @@ final class Store {
         case "provData":
             fichasProveedores = (a as? [String: Any] ?? [:]).compactMap { FichaProveedor(clave: $0.key, $0.value) }
                 .sorted { $0.nombre.localizedCompare($1.nombre) == .orderedAscending }
+        case "rubros":
+            // `Object.entries(rubros)` de la web: cada rubro con su id
+            rubros = (a as? [String: Any] ?? [:]).compactMap { k, v -> Rubro? in
+                guard let d = v as? [String: Any] else { return nil }
+                let n = texto(d["nombre"])
+                return n.isEmpty ? nil : Rubro(id: k, nombre: n, color: texto(d["color"]))
+            }.sorted { $0.id < $1.id }   // orden en que se cargaron, como la web
         case "listasPrecios":
             listasPrecios = (a as? [String: Any] ?? [:]).compactMap { ListaPrecios(clave: $0.key, $0.value) }
         default:
@@ -396,7 +406,7 @@ final class Store {
                 ocId = o.id
                 let campos: [String: Any] = [
                     "num": num, "numOCPDF": numPDF, "obra": obra, "obraId": obraId, "responsable": resp,
-                    "proveedor": prov, "provId": provId, "rubro": o.rubro, "notas": notas, "items": items,
+                    "proveedor": prov, "provId": provId, "rubro": b.rubro, "notas": notas, "items": items,
                     // La web NO guarda la fecha al editar (es un error suyo); el iPhone sí.
                     "fecha": b.fechaTexto,
                 ]
@@ -406,7 +416,7 @@ final class Store {
                 ocId = IDs.push()
                 var oc: [String: Any] = [
                     "id": ocId, "num": num, "obra": obra, "obraId": obraId, "responsable": resp,
-                    "proveedor": prov, "provId": provId, "rubro": "", "fecha": b.fechaTexto, "notas": notas,
+                    "proveedor": prov, "provId": provId, "rubro": b.rubro, "fecha": b.fechaTexto, "notas": notas,
                     "estado": "pendiente", "items": items, "comentario": "", "ts": ahora,
                 ]
                 if let n = numPDF as? Int { oc["numOCPDF"] = n }

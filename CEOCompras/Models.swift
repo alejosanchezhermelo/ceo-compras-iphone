@@ -339,3 +339,11 @@ struct ObraItem: Identifiable, Hashable {
     let nombre: String
     let archivada: Bool
 }
+
+
+/// Un rubro de la web (`rubros/{id}`: nombre y color "#RRGGBB").
+struct Rubro: Identifiable, Hashable {
+    let id: String
+    let nombre: String
+    let color: String
+}
