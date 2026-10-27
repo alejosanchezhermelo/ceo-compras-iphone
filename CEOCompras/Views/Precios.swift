@@ -39,7 +39,7 @@ struct PantallaPrecios: View {
             .background(T.bg)
             .scrollDismissesKeyboard(.interactively)
             .navigationBarTitleDisplayMode(.inline)
-            .toolbar { ToolbarItem(placement: .topBarLeading) { EncabezadoPedidos() } }
+            .conEncabezado()
             .fileImporter(isPresented: $elegirArchivo, allowedContentTypes: [.pdf, .jpeg, .png, .image]) { r in cargarArchivo(r) }
             .sheet(item: $verArchivo) { VisorPDF(archivo: $0) }
             .sheet(item: Binding(get: { verImagen.map { ImagenID(img: $0) } }, set: { verImagen = $0?.img })) { i in

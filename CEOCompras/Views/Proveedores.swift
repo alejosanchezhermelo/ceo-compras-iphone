@@ -28,7 +28,7 @@ struct PantallaProveedores: View {
             }
             .background(T.bg)
             .navigationBarTitleDisplayMode(.inline)
-            .toolbar { ToolbarItem(placement: .topBarLeading) { EncabezadoPedidos() } }
+            .conEncabezado()
             .sheet(item: Binding(get: { fichaAbierta.map { NombreID(nombre: $0) } }, set: { fichaAbierta = $0?.nombre })) { n in
                 FichaProveedorVista(nombre: n.nombre)
             }

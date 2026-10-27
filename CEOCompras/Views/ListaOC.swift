@@ -73,17 +73,17 @@ struct ListaOC: View {
                 }
                 .padding(.horizontal, 14)
                 .padding(.top, 10)
-                // lugar para que el botón flotante no tape la última OC
-                .padding(.bottom, 84)
+                .padding(.bottom, 24)
             }
             .background(T.bg)
             .scrollDismissesKeyboard(.interactively)
             .refreshable { await store.reconectar() }
             .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .topBarLeading) { EncabezadoPedidos() }
+            .conEncabezado()
+            .onChange(of: store.pedirNuevaOC) { _, pedido in
+                // El botón flotante "➕ Nueva OC" vive pegado a la barra de abajo (ContenidoPestanas)
+                if pedido { store.pedirNuevaOC = false; nuevaOC = true }
             }
-            .overlay { botonFlotante }
             .sheet(isPresented: $nuevaOC) { FormularioOC(editando: nil, numeroSugerido: store.nextOCNum) }
             .sheet(item: $verSolicitud, onDismiss: {
                 if let s = pendienteOC { pendienteOC = nil; solicitudParaOC = s }
@@ -98,30 +98,6 @@ struct ListaOC: View {
     }
 
     // MARK: Partes
-
-    /// `#fabNuevaOC` de la PWA: abajo a la derecha, arriba de la barra. Con el teclado abierto se esconde.
-    private var botonFlotante: some View {
-        GeometryReader { g in
-            if store.puedeEditar && g.safeAreaInsets.bottom <= 120 {
-                // Con Spacer (y no con un frame grande) para que el resto de la pantalla se siga pudiendo tocar
-                VStack {
-                    Spacer()
-                    HStack {
-                        Spacer()
-                        Button { nuevaOC = true } label: {
-                            Text("➕ Nueva OC")
-                                .font(T.sans(14, .bold))
-                                .foregroundStyle(.white)
-                                .padding(.horizontal, 22).padding(.vertical, 14)
-                                .vidrioAzul()
-                        }
-                        .buttonStyle(.plain)
-                    }
-                }
-                .padding(.trailing, 20).padding(.bottom, 14)
-            }
-        }
-    }
 
     /// Los 3 recuadros de arriba (Total OC / Entregadas / Pendientes).
     private var estadisticas: some View {
@@ -245,6 +221,30 @@ struct ListaOC: View {
         .frame(maxWidth: .infinity)
         .background(activo ? T.blL : T.sf, in: RoundedRectangle(cornerRadius: 8))
         .overlay(RoundedRectangle(cornerRadius: 8).stroke(activo ? T.blM : T.bd, lineWidth: 1))
+    }
+}
+
+/// `#fabNuevaOC` de la PWA. En iOS 26: botón azul de vidrio del sistema; antes, azul lleno con sombra.
+struct BotonNuevaOC: View {
+    let accion: () -> Void
+    var body: some View {
+        if #available(iOS 26.0, *) {
+            Button(action: accion) {
+                Text("➕ Nueva OC").font(T.sans(15, .bold)).padding(.horizontal, 8).padding(.vertical, 4)
+            }
+            .buttonStyle(.glassProminent)
+            .tint(T.bl)
+        } else {
+            Button(action: accion) {
+                Text("➕ Nueva OC")
+                    .font(T.sans(14, .bold))
+                    .foregroundStyle(.white)
+                    .padding(.horizontal, 22).padding(.vertical, 14)
+                    .background(T.bl, in: Capsule())
+                    .shadow(color: T.bl.opacity(0.4), radius: 8, y: 4)
+            }
+            .buttonStyle(.plain)
+        }
     }
 }
 

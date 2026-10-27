@@ -37,6 +37,8 @@ final class Store {
     var ofrecerFaceID = false
     /// Cartelito de confirmación ("OC 1603 creada").
     var aviso: String?
+    /// El botón flotante "➕ Nueva OC" (pegado a la barra de abajo) pide abrir el formulario de la pestaña Órdenes.
+    var pedirNuevaOC = false
 
     /// Nodos que se leen (dentro de la base real o de la de prueba).
     static let nodos = ["config", "ordenes", "obras", "encargados", "historial", "obrasData", "provData", "proveedores", "solicitudes", "listasPrecios", "rubros"]

@@ -59,7 +59,7 @@ struct PantallaFacturas: View {
             .background(T.bg)
             .scrollDismissesKeyboard(.interactively)
             .navigationBarTitleDisplayMode(.inline)
-            .toolbar { ToolbarItem(placement: .topBarLeading) { EncabezadoPedidos() } }
+            .conEncabezado()
             .fileImporter(isPresented: $elegirPDF, allowedContentTypes: [.pdf]) { leerPDF($0) }
             .onChange(of: foto) { _, item in if let item { leerFoto(item) } }
             .fullScreenCover(isPresented: $camara) { camaraVista }

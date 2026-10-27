@@ -59,7 +59,7 @@ struct PantallaAjustes: View {
             .font(T.sans(15))
             .disabled(trabajando)
             .navigationBarTitleDisplayMode(.inline)
-            .toolbar { ToolbarItem(placement: .topBarLeading) { EncabezadoPedidos() } }
+            .conEncabezado()
             .onAppear { proximoNum = String(store.nextOCNum) }
             .onChange(of: store.nextOCNum) { _, n in proximoNum = String(n) }
             .alert(pregunta?.titulo ?? "", isPresented: Binding(get: { pregunta != nil }, set: { if !$0 { pregunta = nil } }),

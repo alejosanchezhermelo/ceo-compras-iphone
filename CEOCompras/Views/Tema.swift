@@ -148,22 +148,11 @@ func colorEvento(_ tipo: String) -> Color {
 }
 
 // MARK: Liquid Glass (iOS 26)
-// Solo en lo que flota sobre la pantalla: el botón "➕ Nueva OC", la barra de abajo y la hoja "OC No …".
+// Solo en lo que flota sobre la pantalla: el botón "➕ Nueva OC" (BotonNuevaOC), la barra de abajo y la hoja "OC No …".
 // Las tarjetas, materiales y botones de las OC quedan sólidos (con sol se leen mejor y siguen iguales a la PWA).
 // En iOS 18 todo se ve como antes.
 
 extension View {
-    /// Botón flotante: vidrio teñido de azul CEO que reacciona al toque; antes de iOS 26, azul lleno con sombra.
-    @ViewBuilder func vidrioAzul() -> some View {
-        if #available(iOS 26.0, *) {
-            self.glassEffect(.regular.tint(T.bl.opacity(0.85)).interactive(), in: Capsule())
-                .shadow(color: T.bl.opacity(0.25), radius: 8, y: 4)
-        } else {
-            self.background(T.bl, in: Capsule())
-                .shadow(color: T.bl.opacity(0.4), radius: 8, y: 4)
-        }
-    }
-
     /// Fondo de una hoja que sube desde abajo: en iOS 26 se deja el vidrio del sistema; antes, blanco.
     @ViewBuilder func fondoHoja() -> some View {
         if #available(iOS 26.0, *) {
@@ -174,3 +163,22 @@ extension View {
     }
 }
 
+
+/// "Pedidos · COMPRAS" arriba a la izquierda. En iOS 26 el sistema le pone un círculo de vidrio a cada botón
+/// de arriba y lo achicaba hasta dejar solo el ícono (foto de Alejo, 27/10): se le saca ese fondo.
+struct ConEncabezado: ViewModifier {
+    func body(content: Content) -> some View {
+        if #available(iOS 26.0, *) {
+            content.toolbar {
+                ToolbarItem(placement: .topBarLeading) { EncabezadoPedidos().fixedSize() }
+                    .sharedBackgroundVisibility(.hidden)
+            }
+        } else {
+            content.toolbar { ToolbarItem(placement: .topBarLeading) { EncabezadoPedidos() } }
+        }
+    }
+}
+
+extension View {
+    func conEncabezado() -> some View { modifier(ConEncabezado()) }
+}

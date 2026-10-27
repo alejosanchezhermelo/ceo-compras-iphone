@@ -97,6 +97,7 @@ struct Raiz: View {
 
 /// Las 6 pestañas de la PWA, en el mismo orden, con una barra propia abajo.
 struct ContenidoPestanas: View {
+    @Environment(Store.self) private var store
     @State private var pestana = 0
     @State private var visitadas: Set<Int> = [0]
 
@@ -130,7 +131,17 @@ struct ContenidoPestanas: View {
             }
         }
         .safeAreaInset(edge: .bottom, spacing: 0) {
-            if !tecladoAbierto { barra }
+            if !tecladoAbierto {
+                // El "➕ Nueva OC" va pegado ARRIBA de la barra (antes flotaba suelto y en iOS 26 quedaba
+                // encimado con la barra de vidrio: foto de Alejo, 27/10).
+                VStack(alignment: .trailing, spacing: 10) {
+                    if pestana == 0 && store.puedeEditar {
+                        BotonNuevaOC { store.pedirNuevaOC = true }
+                            .padding(.trailing, 16)
+                    }
+                    barra
+                }
+            }
         }
     }
 

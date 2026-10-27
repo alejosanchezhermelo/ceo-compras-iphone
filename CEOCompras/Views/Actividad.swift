@@ -33,7 +33,7 @@ struct PantallaActividad: View {
             .background(T.bg)
             .refreshable { await store.reconectar() }
             .navigationBarTitleDisplayMode(.inline)
-            .toolbar { ToolbarItem(placement: .topBarLeading) { EncabezadoPedidos() } }
+            .conEncabezado()
         }
     }
 }
