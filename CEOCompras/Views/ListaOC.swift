@@ -173,6 +173,9 @@ struct ListaOC: View {
             case .copiar:
                 UIPasteboard.general.string = oc.num
                 store.aviso = "✅ N° de OC \(oc.num) copiado"
+            case .copiarMateriales:
+                UIPasteboard.general.string = ListaOC.textoMateriales(oc)
+                store.aviso = "✅ Materiales copiados"
             case .editar:
                 editarOC = oc
             case .urgente:
@@ -186,6 +189,18 @@ struct ListaOC: View {
                 borrar = oc
             }
         }
+    }
+
+    /// "Copiar materiales" (v0.20): para pegar en WhatsApp y pedir cotización a otro proveedor.
+    /// A propósito NO lleva N° de OC, obra ni proveedor actual.
+    static func textoMateriales(_ oc: OC) -> String {
+        let renglones = oc.items.map { it -> String in
+            let desc = it.desc.trimmingCharacters(in: .whitespaces)
+            let cant = [it.cant, it.unit.isEmpty ? it.unidad : it.unit].map { $0.trimmingCharacters(in: .whitespaces) }
+                .filter { !$0.isEmpty }.joined(separator: " ")
+            return "• " + desc + (cant.isEmpty ? "" : " — " + cant)
+        }
+        return "Buenas, me pasas cotizacion de estos materiales:\n" + renglones.joined(separator: "\n")
     }
 
     /// Igual que el botón "Generar OC": anota "OC PDF No … generada" y después sigue.
@@ -383,7 +398,7 @@ struct FranjaPrueba: View {
 
 
 /// Lo que se puede elegir al mantener apretada una OC.
-enum AccionOC { case pdf, whatsapp, copiar, editar, urgente, eliminar }
+enum AccionOC { case pdf, whatsapp, copiar, copiarMateriales, editar, urgente, eliminar }
 
 /// Tarjeta de OC de la lista (`cardOC` de la PWA). Al tocarla se abre ahí mismo (▼) y muestra todo.
 /// Al mantenerla apretada: vista previa de la OC + menú de acciones rápidas (v0.19).
@@ -416,6 +431,9 @@ struct TarjetaOC: View {
             Button { alMenu(.pdf) } label: { Label("Ver / imprimir PDF", systemImage: "doc.text") }
             Button { alMenu(.whatsapp) } label: { Label("Mandar por WhatsApp", systemImage: "paperplane") }
             Button { alMenu(.copiar) } label: { Label("Copiar N° de OC", systemImage: "doc.on.doc") }
+            if !oc.items.isEmpty {
+                Button { alMenu(.copiarMateriales) } label: { Label("Copiar materiales", systemImage: "list.bullet.clipboard") }
+            }
         }
         if store.puedeEditar {
             if oc.estado != "entregado" {
