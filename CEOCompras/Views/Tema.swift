@@ -81,9 +81,11 @@ struct Divisor: View {
     var color: Color = T.bl
     var claro: Color = T.blL
     var medio: Color = T.blM
+    /// Ícono de Apple adelante del texto (v0.19, en lugar del emoji).
+    var icono: String? = nil
     var body: some View {
         HStack(spacing: 8) {
-            Text(texto).font(T.sans(12, .semibold)).foregroundStyle(T.tx2)
+            (icono.map { ic($0, texto) } ?? Text(texto)).font(T.sans(12, .semibold)).foregroundStyle(T.tx2)
             Text("\(n)")
                 .font(T.mono(11, .medium))
                 .padding(.horizontal, 7).padding(.vertical, 1)
@@ -181,4 +183,131 @@ struct ConEncabezado: ViewModifier {
 
 extension View {
     func conEncabezado() -> some View { modifier(ConEncabezado()) }
+}
+
+// MARK: Vibraciones (v0.19)
+// Toques cortos como las apps de Apple. Si el iPhone tiene las vibraciones del sistema apagadas, no vibra.
+
+@MainActor
+enum Vibrar {
+    /// Toque muy leve: cambiar de pestaña.
+    static func seleccion() { UISelectionFeedbackGenerator().selectionChanged() }
+    /// Toque suave: abrir / cerrar una OC.
+    static func suave() { UIImpactFeedbackGenerator(style: .light).impactOccurred() }
+    /// Toque firme: marcar urgente.
+    static func firme() { UIImpactFeedbackGenerator(style: .rigid).impactOccurred() }
+    /// Doble toque de "listo": se guardó algo.
+    static func listo() { UINotificationFeedbackGenerator().notificationOccurred(.success) }
+    /// Aviso: antes de eliminar.
+    static func aviso() { UINotificationFeedbackGenerator().notificationOccurred(.warning) }
+    /// Algo falló o falta un dato.
+    static func error() { UINotificationFeedbackGenerator().notificationOccurred(.error) }
+}
+
+extension View {
+    /// Vibra con "error" cada vez que aparece un cartel de error en la pantalla.
+    func vibrarAlError(_ error: String?) -> some View {
+        onChange(of: error) { _, nuevo in if nuevo != nil { Vibrar.error() } }
+    }
+}
+
+// MARK: Íconos de Apple en lugar de emojis (v0.19)
+
+/// Texto con un ícono de Apple adelante, en una sola línea de texto (toma la letra y el color de lo que lo rodea).
+func ic(_ simbolo: String, _ texto: String) -> Text {
+    texto.isEmpty ? Text(Image(systemName: simbolo)) : Text("\(Image(systemName: simbolo)) \(texto)")
+}
+
+/// Íconos de los cartelitos de abajo ("✅ OC activada" → ✓ verde + "OC activada").
+/// Los textos siguen trayendo el emoji (son los mismos que la web); acá se cambia solo cómo se ven.
+enum IconoAviso {
+    static let tabla: [(String, String, Color)] = [
+        ("✅", "checkmark.circle.fill", Color(hex: 0x6FCF97)),
+        ("🗑", "trash.fill", Color(hex: 0xF2A3A3)),
+        ("🔴", "exclamationmark.circle.fill", Color(hex: 0xFF8A80)),
+        ("📦", "archivebox.fill", Color(hex: 0xE8B86A)),
+        ("📝", "note.text", Color(hex: 0xAABFD8)),
+    ]
+
+    /// Separa el emoji del principio (si es uno conocido) y devuelve el ícono y el texto sin el emoji.
+    static func separar(_ s: String) -> (simbolo: String, color: Color, texto: String)? {
+        // Se compara "por dentro" (unicodeScalars) para que "🗑" y "🗑️" cuenten como el mismo.
+        let letras = s.unicodeScalars
+        for (emoji, simbolo, color) in tabla {
+            let e = emoji.unicodeScalars
+            guard letras.starts(with: e) else { continue }
+            let resto = String(Substring(letras.dropFirst(e.count)))
+            return (simbolo, color, resto.trimmingCharacters(in: CharacterSet(charactersIn: "\u{FE0F} ")))
+        }
+        return nil
+    }
+}
+
+// MARK: Carga con tarjetas "fantasma" (v0.19)
+
+/// Brillo que pasa de lado a lado sobre las formas grises mientras se cargan los datos.
+struct Brillo: ViewModifier {
+    @Environment(\.accessibilityReduceMotion) private var sinMovimiento
+    @State private var avance: CGFloat = 0
+
+    func body(content: Content) -> some View {
+        content
+            .overlay {
+                if !sinMovimiento {
+                    GeometryReader { g in
+                        LinearGradient(colors: [.clear, .white.opacity(0.75), .clear],
+                                       startPoint: .leading, endPoint: .trailing)
+                            .frame(width: g.size.width * 0.5)
+                            .offset(x: -g.size.width * 0.5 + avance * g.size.width * 1.5)
+                    }
+                    .mask(content)
+                    .allowsHitTesting(false)
+                }
+            }
+            .onAppear {
+                withAnimation(.linear(duration: 1.25).repeatForever(autoreverses: false)) { avance = 1 }
+            }
+    }
+}
+
+extension View {
+    func brillo() -> some View { modifier(Brillo()) }
+}
+
+/// Una tarjeta gris con la forma de una OC (número, etiquetas, proveedor y fecha).
+struct TarjetaFantasma: View {
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 6) {
+                Capsule().frame(width: 44, height: 14)
+                Capsule().frame(width: 70, height: 14)
+                Capsule().frame(width: 54, height: 14)
+            }
+            Capsule().frame(width: 190, height: 11)
+            Capsule().frame(width: 110, height: 9)
+        }
+        .foregroundStyle(T.sf2)
+        .padding(.vertical, 15).padding(.horizontal, 16)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .brillo()
+        .tarjeta()
+    }
+}
+
+/// Un renglón gris con la forma de un evento del historial (punto + texto + fecha).
+struct EventoFantasma: View {
+    let ancho: CGFloat
+    var body: some View {
+        HStack(alignment: .top, spacing: 10) {
+            Circle().frame(width: 8, height: 8).padding(.top, 4)
+            VStack(alignment: .leading, spacing: 6) {
+                Capsule().frame(width: ancho, height: 11)
+                Capsule().frame(width: 80, height: 8)
+            }
+            Spacer(minLength: 0)
+        }
+        .foregroundStyle(T.sf2)
+        .padding(.vertical, 9)
+        .brillo()
+    }
 }

@@ -28,12 +28,12 @@ struct CuerpoOC: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
             if !oc.solRef.isEmpty {
-                Text("📋 Solicitud de \(oc.solRef)").font(T.mono(11)).foregroundStyle(T.pp)
+                ic("list.clipboard", "Solicitud de \(oc.solRef)").font(T.mono(11)).foregroundStyle(T.pp)
             }
             if !oc.notas.isEmpty { CajaNotas(texto: oc.notas) }
             materiales
             if !oc.comentario.isEmpty {
-                (Text("⚠ Faltantes: ").bold() + Text(oc.comentario))
+                Text("\(ic("exclamationmark.triangle", "Faltantes:").bold()) \(oc.comentario)")
                     .font(T.sans(13)).foregroundStyle(T.rd)
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .padding(.horizontal, 12).padding(.vertical, 10)
@@ -41,8 +41,7 @@ struct CuerpoOC: View {
                     .overlay(RoundedRectangle(cornerRadius: 8).stroke(T.rdM, lineWidth: 1))
             }
             if !oc.remito.isEmpty {
-                (Text("🧾 Remito N° ") + Text(oc.remito).bold()
-                 + Text(oc.fechaEntregaReal.isEmpty ? "" : " · Entregado el \(oc.fechaEntregaReal)"))
+                Text("\(ic("doc.plaintext", "Remito N°")) \(Text(oc.remito).bold())\(oc.fechaEntregaReal.isEmpty ? "" : " · Entregado el \(oc.fechaEntregaReal)")")
                     .font(T.sans(13)).foregroundStyle(T.gn)
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .padding(.horizontal, 12).padding(.vertical, 8)
@@ -66,6 +65,7 @@ struct CuerpoOC: View {
         .alert("No se guardó", isPresented: Binding(get: { error != nil }, set: { if !$0 { error = nil } })) {
             Button("OK", role: .cancel) {}
         } message: { Text(error ?? "") }
+        .vibrarAlError(error)
     }
 
     // MARK: Materiales (`.itbl` de la PWA)
@@ -107,7 +107,7 @@ struct CuerpoOC: View {
     private var notasInternas: some View {
         VStack(alignment: .leading, spacing: 6) {
             Divider().overlay(T.bd)
-            Text("🔒 NOTAS INTERNAS (SOLO COMPRAS)").font(T.mono(10, .medium)).kerning(0.7).foregroundStyle(T.am)
+            ic("lock", "NOTAS INTERNAS (SOLO COMPRAS)").font(T.mono(10, .medium)).kerning(0.7).foregroundStyle(T.am)
             ForEach(Array(oc.notasInternas.enumerated()), id: \.offset) { _, n in
                 VStack(alignment: .leading, spacing: 3) {
                     Text(n.txt).font(T.sans(13)).foregroundStyle(T.tx)
@@ -134,7 +134,7 @@ struct CuerpoOC: View {
     private var historial: some View {
         VStack(alignment: .leading, spacing: 0) {
             Divider().overlay(T.bd).padding(.bottom, 10)
-            Text("📋 HISTORIAL DE ESTA OC").font(T.mono(10, .medium)).kerning(0.7).foregroundStyle(T.tx3)
+            ic("clock.arrow.circlepath", "HISTORIAL DE ESTA OC").font(T.mono(10, .medium)).kerning(0.7).foregroundStyle(T.tx3)
                 .padding(.bottom, 2)
             let evs = store.eventosPorOC[oc.id] ?? []
             if evs.isEmpty {
@@ -149,7 +149,7 @@ struct CuerpoOC: View {
     private var facturas: some View {
         let sinCuit = (store.fichaProveedor(oc).map { $0.cuit.isEmpty }) ?? false
         return VStack(alignment: .leading, spacing: 8) {
-            Text(oc.tieneFactura ? "🧾 FACTURAS DE ESTA OC" : "🧾 FACTURA DE ESTA OC")
+            ic("receipt", oc.tieneFactura ? "FACTURAS DE ESTA OC" : "FACTURA DE ESTA OC")
                 .font(T.mono(11, .medium)).kerning(0.5).foregroundStyle(T.tx2)
             if oc.tieneFactura {
                 ForEach(Array(oc.facturas.enumerated()), id: \.offset) { i, f in
@@ -174,7 +174,7 @@ struct CuerpoOC: View {
             if !oc.tieneFactura && sinCuit {
                 TextField("CUIT del proveedor (opcional)", text: $facCuit).keyboardType(.numberPad).campoPWA()
             }
-            Button(oc.tieneFactura ? "➕ Sumar factura" : "Guardar") { cargarFactura() }
+            Button { cargarFactura() } label: { oc.tieneFactura ? ic("plus", "Sumar factura") : Text("Guardar") }
                 .buttonStyle(BotonPWA())
                 .disabled(trabajando)
             Text(oc.tieneFactura
@@ -193,25 +193,25 @@ struct CuerpoOC: View {
         VStack(alignment: .leading, spacing: 8) {
             Divider().overlay(T.bd)
             Renglones(espacio: 8) {
-                Button("📄 Generar OC") { generar() }
+                Button { generar() } label: { ic("doc.text", "Generar OC") }
                     .buttonStyle(BotonPWA(tipo: .suave(T.blL, T.bl, T.blM), lleno: false))
                 if store.puedeEditar {
                     if oc.tieneFactura {
-                        Button("🧾 Quitar factura") { preguntarQuitarTodas() }
+                        Button { preguntarQuitarTodas() } label: { ic("receipt", "Quitar factura") }
                             .buttonStyle(BotonPWA(tipo: .suave(T.blL, T.bl, T.blM), lleno: false))
                     }
                     if oc.estado != "entregado" {
-                        Button("✏️ Editar") { editar = true }
+                        Button { editar = true } label: { ic("pencil", "Editar") }
                             .buttonStyle(BotonPWA(tipo: .suave(T.blL, T.bl, T.blM), lleno: false))
                         if oc.urgente {
-                            Button("✓ Quitar urgente") { urgente() }
+                            Button { urgente() } label: { ic("checkmark.circle", "Quitar urgente") }
                                 .buttonStyle(BotonPWA(tipo: .suave(T.sf2, T.tx3, T.bd), lleno: false))
                         } else {
-                            Button("🔴 Marcar urgente") { urgente() }
+                            Button { urgente() } label: { ic("exclamationmark.circle.fill", "Marcar urgente") }
                                 .buttonStyle(BotonPWA(tipo: .suave(T.urgenteFondo, T.urgente, Color(hex: 0xE8AAAA)), lleno: false))
                         }
                     }
-                    Button("🗑 Eliminar") { preguntarEliminar() }
+                    Button { preguntarEliminar() } label: { ic("trash", "Eliminar") }
                         .buttonStyle(BotonPWA(tipo: .suave(T.rdL, T.rd, T.rdM), lleno: false))
                 }
             }
@@ -254,6 +254,7 @@ struct CuerpoOC: View {
 
     private func preguntarEliminar() {
         let o = oc
+        Vibrar.aviso()
         pregunta = Pregunta(titulo: "¿Eliminar la OC \(o.num)? Esta acción no se puede deshacer.", boton: "Eliminar",
                             destructiva: true) {
             correr({ await store.eliminarOC(o) }, ok: "🗑 OC \(o.num) eliminada")
@@ -377,6 +378,7 @@ struct OpcionesOC: View {
         .alert("No se pudo armar el PDF", isPresented: Binding(get: { error != nil }, set: { if !$0 { error = nil } })) {
             Button("OK", role: .cancel) {}
         } message: { Text(error ?? "") }
+        .vibrarAlError(error)
     }
 
     private func armar() -> ArchivoPDF? {

@@ -63,7 +63,7 @@ struct Raiz: View {
         }
         .overlay(alignment: .bottom) {
             if let a = store.aviso {
-                Text(a)
+                textoAviso(a)
                     .font(T.sans(13, .semibold))
                     .foregroundStyle(.white)
                     .multilineTextAlignment(.center)
@@ -81,7 +81,12 @@ struct Raiz: View {
             }
         }
         .animation(.easeOut(duration: 0.2), value: store.fase)
-        .animation(.easeOut(duration: 0.25), value: store.aviso)
+        .animation(.spring(response: 0.35, dampingFraction: 0.8), value: store.aviso)
+        // Cada cartelito de "listo" vibra; el de urgente con un toque firme.
+        .onChange(of: store.aviso) { _, nuevo in
+            guard let nuevo else { return }
+            if nuevo.hasPrefix("🔴") { Vibrar.firme() } else { Vibrar.listo() }
+        }
         .task { await store.alAbrir() }
         .alert("¿Entrar con Face ID la próxima vez?", isPresented: Binding(
             get: { store.ofrecerFaceID },
@@ -92,6 +97,14 @@ struct Raiz: View {
             Text("Abrís la app, mirás el teléfono y entrás. Se puede cambiar en Ajustes.")
         }
     }
+
+    /// El cartelito con el ícono de Apple en lugar del emoji del principio.
+    private func textoAviso(_ a: String) -> Text {
+        if let p = IconoAviso.separar(a) {
+            return Text("\(Text(Image(systemName: p.simbolo)).foregroundStyle(p.color))  \(p.texto)")
+        }
+        return Text(a)
+    }
 }
 
 
@@ -100,6 +113,10 @@ struct ContenidoPestanas: View {
     @Environment(Store.self) private var store
     @State private var pestana = 0
     @State private var visitadas: Set<Int> = [0]
+    /// Cuántas veces se tocó cada pestaña (cada toque hace "saltar" su ícono).
+    @State private var toques = [Int](repeating: 0, count: 6)
+    @Namespace private var pastilla
+    @Environment(\.accessibilityReduceMotion) private var sinMovimiento
 
     private let items: [(String, String)] = [
         ("ÓRDENES", "shippingbox"), ("ACTIVIDAD", "clock"), ("AJUSTES", "gearshape"),
@@ -123,8 +140,11 @@ struct ContenidoPestanas: View {
         ZStack {
             ForEach(0..<6, id: \.self) { i in
                 if visitadas.contains(i) {
+                    // La que se va se corre un poquito hacia un lado y la que entra viene del otro
+                    // (del lado de la pestaña que tocaste), con un fundido rápido.
                     pantalla(i)
                         .opacity(pestana == i ? 1 : 0)
+                        .offset(x: pestana == i || sinMovimiento ? 0 : (i < pestana ? -24 : 24))
                         .allowsHitTesting(pestana == i)
                         .accessibilityHidden(pestana != i)
                 }
@@ -147,7 +167,7 @@ struct ContenidoPestanas: View {
 
     @ViewBuilder private func pantalla(_ i: Int) -> some View {
         switch i {
-        case 0: ListaOC(abrirProveedores: { visitadas.insert(4); pestana = 4 })
+        case 0: ListaOC(abrirProveedores: { ir(a: 4) })
         case 1: PantallaActividad()
         case 2: PantallaAjustes()
         case 3: PantallaPrecios()
@@ -176,20 +196,28 @@ struct ContenidoPestanas: View {
         HStack(spacing: 0) {
             ForEach(items.indices, id: \.self) { i in
                 let elegida = pestana == i
-                Button { visitadas.insert(i); pestana = i } label: {
+                Button { ir(a: i) } label: {
                     VStack(spacing: 3) {
-                        Image(systemName: items[i].1).font(.system(size: 18, weight: elegida ? .semibold : .regular))
+                        Image(systemName: items[i].1)
+                            .font(.system(size: 18, weight: elegida ? .semibold : .regular))
+                            .symbolEffect(.bounce, value: toques[i])
                         Text(items[i].0).font(T.mono(8, .medium)).lineLimit(1).minimumScaleFactor(0.7)
                     }
                     .foregroundStyle(elegida ? T.bl : (vidrio ? T.tx2 : T.tx3))
                     .frame(maxWidth: .infinity)
                     .padding(.top, 7).padding(.bottom, 4)
                     .background {
+                        // La pastilla (o la rayita azul) es UNA sola que se desliza de una pestaña a la otra.
                         if elegida {
                             if vidrio {
                                 Capsule().fill(T.bl.opacity(0.12))
+                                    .matchedGeometryEffect(id: "pastilla", in: pastilla)
                             } else {
-                                VStack { Rectangle().fill(T.bl).frame(height: 2); Spacer() }
+                                VStack {
+                                    Rectangle().fill(T.bl).frame(height: 2)
+                                        .matchedGeometryEffect(id: "pastilla", in: pastilla)
+                                    Spacer()
+                                }
                             }
                         }
                     }
@@ -197,6 +225,17 @@ struct ContenidoPestanas: View {
                 }
                 .buttonStyle(.plain)
             }
+        }
+    }
+
+    /// Cambia de pestaña con animación, salto del ícono y un toque muy leve.
+    private func ir(a i: Int) {
+        toques[i] += 1
+        guard i != pestana else { return }
+        Vibrar.seleccion()
+        withAnimation(.snappy(duration: 0.3)) {
+            visitadas.insert(i)
+            pestana = i
         }
     }
 }

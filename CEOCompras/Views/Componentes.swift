@@ -38,9 +38,11 @@ struct Etiqueta: View {
     let fondo: Color
     let color: Color
     var borde: Color = .clear
+    /// Ícono de Apple adelante del texto (v0.19, en lugar del emoji).
+    var icono: String? = nil
 
     var body: some View {
-        Text(texto)
+        (icono.map { ic($0, texto) } ?? Text(texto))
             .font(T.sans(11, .medium))
             .lineLimit(1)
             .padding(.horizontal, 8)
@@ -60,7 +62,7 @@ struct Etiqueta: View {
     }
 
     static func urgente() -> Etiqueta {
-        Etiqueta(texto: "🔴 URGENTE", fondo: T.urgente, color: .white, borde: T.urgente)
+        Etiqueta(texto: "URGENTE", fondo: T.urgente, color: .white, borde: T.urgente, icono: "exclamationmark.circle.fill")
     }
 
     static func obra(_ nombre: String) -> Etiqueta {
@@ -68,8 +70,8 @@ struct Etiqueta: View {
     }
 
     static func factura(_ f: FacturaOC) -> Etiqueta {
-        Etiqueta(texto: "🧾 Fact. \(f.num)" + (f.importe.map { " · " + Formato.pesos($0) } ?? ""),
-                 fondo: T.gnL, color: T.gn, borde: T.gnM)
+        Etiqueta(texto: "Fact. \(f.num)" + (f.importe.map { " · " + Formato.pesos($0) } ?? ""),
+                 fondo: T.gnL, color: T.gn, borde: T.gnM, icono: "receipt")
     }
 
     /// `.rubro-tag` de la web: fondo del color del rubro muy claro, letra y borde del mismo color.

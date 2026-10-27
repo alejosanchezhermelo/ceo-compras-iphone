@@ -17,15 +17,26 @@ struct ListaOC: View {
     @State private var solicitudParaOC: Solicitud?
     @State private var pendienteOC: Solicitud?
     @State private var asignar: OC?
-    /// OC abiertas en la lista (`expanded` de la web).
-    @State private var abiertas: Set<String> = []
+    /// La OC abierta en la lista. Una sola a la vez: al abrir otra, la anterior se cierra (v0.19, pedido de Alejo).
+    @State private var abierta: String?
     @State private var verObras = false
     @State private var verEncargados = false
+    /// Los números de arriba arrancan en 0 y "ruedan" hasta el valor real al abrir la app.
+    @State private var contadoresListos = false
+    /// Las tarjetas "fantasma" se muestran hasta 10 segundos; si para entonces no llegó nada, se avisa con texto.
+    @State private var esperandoDatos = true
+    // Lo que se elige en el menú de mantener apretada una OC
+    @State private var opcionesPDF: OC?
+    @State private var editarOC: OC?
+    @State private var compartir: ArchivoPDF?
+    @State private var borrar: OC?
+    @State private var errorMenu: String?
 
     var body: some View {
         let visibles = Filtro.aplicar(store.ordenes, pestana: pestana, obra: obra, encargado: encargado,
                                       busqueda: busqueda, orden: orden)
         NavigationStack {
+          ScrollViewReader { proxy in
             ScrollView {
                 LazyVStack(alignment: .leading, spacing: 8) {
                     if store.modoPrueba { FranjaPrueba() }
@@ -42,31 +53,40 @@ struct ListaOC: View {
 
                     let importadas = store.importadasSinAsignar
                     if !importadas.isEmpty {
-                        Divisor(texto: "📥 OC importadas — pendientes de asignar", n: importadas.count,
-                                color: T.am, claro: T.amL, medio: T.amM)
+                        Divisor(texto: "OC importadas — pendientes de asignar", n: importadas.count,
+                                color: T.am, claro: T.amL, medio: T.amM, icono: "tray.and.arrow.down")
                         ForEach(importadas) { o in
                             Button { asignar = o } label: { TarjetaImportada(oc: o) }.buttonStyle(.plain)
                         }
                     }
                     if !store.solicitudes.isEmpty {
-                        Divisor(texto: "📋 Solicitudes de material", n: store.solicitudes.count,
-                                color: T.pp, claro: T.ppL, medio: T.ppM)
+                        Divisor(texto: "Solicitudes de material", n: store.solicitudes.count,
+                                color: T.pp, claro: T.ppL, medio: T.ppM, icono: "list.clipboard")
                         ForEach(store.solicitudes) { s in
                             Button { verSolicitud = s } label: { TarjetaSolicitud(sol: s) }.buttonStyle(.plain)
                         }
                     }
                     if !importadas.isEmpty || !store.solicitudes.isEmpty {
-                        Divisor(texto: "📦 Órdenes de compra", n: store.ordenes.count - importadas.count)
+                        Divisor(texto: "Órdenes de compra", n: store.ordenes.count - importadas.count, icono: "shippingbox")
                     }
 
+                    let cargando = store.ordenes.isEmpty && esperandoDatos && store.mensajeConexion == nil
+                    if cargando {
+                        // Mientras llegan los datos: tarjetas grises con forma de OC y un brillo que pasa.
+                        ForEach(0..<5, id: \.self) { _ in TarjetaFantasma() }
+                            .transition(.opacity)
+                    }
                     ForEach(visibles) { oc in
                         TarjetaOC(oc: oc, rubro: store.rubros.first { $0.nombre == oc.rubro },
-                                  abierta: abiertas.contains(oc.id)) {
-                            if abiertas.contains(oc.id) { abiertas.remove(oc.id) } else { abiertas.insert(oc.id) }
-                        }
+                                  abierta: abierta == oc.id,
+                                  alTocar: { tocar(oc.id, proxy) },
+                                  alMenu: { elegirDelMenu($0, oc) })
+                        .id(oc.id)
+                        .transition(.opacity)
                     }
-                    if visibles.isEmpty {
-                        Text(store.ordenes.isEmpty ? "Cargando órdenes…" : "No hay órdenes en esta categoría")
+                    if visibles.isEmpty && !cargando {
+                        Text(store.ordenes.isEmpty ? "Todavía no llegaron las órdenes. Deslizá hacia abajo para reintentar."
+                                                   : "No hay órdenes en esta categoría")
                             .font(T.sans(13)).foregroundStyle(T.tx3)
                             .frame(maxWidth: .infinity).padding(.vertical, 28)
                     }
@@ -74,12 +94,34 @@ struct ListaOC: View {
                 .padding(.horizontal, 14)
                 .padding(.top, 10)
                 .padding(.bottom, 24)
+                .animation(.easeOut(duration: 0.35), value: store.ordenes.isEmpty)
+            }
+          }
+            .task {
+                try? await Task.sleep(nanoseconds: 10_000_000_000)
+                esperandoDatos = false
             }
             .background(T.bg)
             .scrollDismissesKeyboard(.interactively)
             .refreshable { await store.reconectar() }
             .navigationBarTitleDisplayMode(.inline)
             .conEncabezado()
+            .sheet(item: $opcionesPDF) { o in OpcionesOC(oc: o) }
+            .sheet(item: $editarOC) { o in FormularioOC(editando: o, numeroSugerido: store.nextOCNum) }
+            .sheet(item: $compartir) { a in HojaCompartir(items: [a.url]).presentationDetents([.medium, .large]) }
+            .alert("¿Eliminar la OC \(borrar?.num ?? "")? Esta acción no se puede deshacer.",
+                   isPresented: Binding(get: { borrar != nil }, set: { if !$0 { borrar = nil } }), presenting: borrar) { o in
+                Button("Eliminar", role: .destructive) {
+                    Task {
+                        if let e = await store.eliminarOC(o) { errorMenu = e } else { store.aviso = "🗑 OC \(o.num) eliminada" }
+                    }
+                }
+                Button("Cancelar", role: .cancel) {}
+            }
+            .alert("No se guardó", isPresented: Binding(get: { errorMenu != nil }, set: { if !$0 { errorMenu = nil } })) {
+                Button("OK", role: .cancel) {}
+            } message: { Text(errorMenu ?? "") }
+            .vibrarAlError(errorMenu)
             .onChange(of: store.pedirNuevaOC) { _, pedido in
                 // El botón flotante "➕ Nueva OC" vive pegado a la barra de abajo (ContenidoPestanas)
                 if pedido { store.pedirNuevaOC = false; nuevaOC = true }
@@ -97,23 +139,87 @@ struct ListaOC: View {
         }
     }
 
+    // MARK: Abrir / cerrar y menú de mantener apretado (v0.19)
+
+    /// Abre la OC tocada (cerrando la que estaba abierta) o la cierra si ya estaba abierta.
+    /// Al abrir, la pantalla se acomoda para que la OC quede arriba, a la vista.
+    private func tocar(_ id: String, _ proxy: ScrollViewProxy) {
+        Vibrar.suave()
+        let abrir = abierta != id
+        withAnimation(.spring(response: 0.38, dampingFraction: 0.86)) { abierta = abrir ? id : nil }
+        if abrir {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                withAnimation(.spring(response: 0.45, dampingFraction: 0.9)) { proxy.scrollTo(id, anchor: .top) }
+            }
+        }
+    }
+
+    private func elegirDelMenu(_ accion: AccionOC, _ oc: OC) {
+        // Se espera a que termine de cerrarse el menú antes de abrir otra ventana.
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+            switch accion {
+            case .pdf:
+                generar(oc) { opcionesPDF = $0 }
+            case .whatsapp:
+                generar(oc) { o in
+                    // Sin número de PDF todavía (OC muy vieja): se abre la hoja de siempre.
+                    guard o.numOCPDF != nil else { opcionesPDF = o; return }
+                    do {
+                        compartir = ArchivoPDF(url: try PDFOC.archivo(o), titulo: "OC \(o.numOCPDF ?? 0)")
+                    } catch {
+                        errorMenu = error.localizedDescription
+                    }
+                }
+            case .copiar:
+                UIPasteboard.general.string = oc.num
+                store.aviso = "✅ N° de OC \(oc.num) copiado"
+            case .editar:
+                editarOC = oc
+            case .urgente:
+                Task {
+                    if let e = await store.cambiarUrgente(oc) { errorMenu = e } else {
+                        store.aviso = oc.urgente ? "Urgente desactivado" : "🔴 OC marcada como urgente"
+                    }
+                }
+            case .eliminar:
+                Vibrar.aviso()
+                borrar = oc
+            }
+        }
+    }
+
+    /// Igual que el botón "Generar OC": anota "OC PDF No … generada" y después sigue.
+    private func generar(_ oc: OC, despues: @escaping (OC) -> Void) {
+        guard store.puedeEditar else { despues(oc); return }
+        Task {
+            if let e = await store.registrarPDF(oc) { errorMenu = e } else { despues(oc) }
+        }
+    }
+
     // MARK: Partes
 
     /// Los 3 recuadros de arriba (Total OC / Entregadas / Pendientes).
+    /// Los números ruedan como un cuentakilómetros: al abrir suben desde 0 y después cambian girando.
     private var estadisticas: some View {
         let ocs = store.ordenes
         let entr = ocs.filter { $0.estado == "entregado" }.count
         let pend = ocs.filter { $0.estado == "pendiente" || $0.estado == "parcial" }.count
         return HStack(spacing: 8) {
-            recuadro("\(ocs.count)", "Total OC", T.tx)
-            recuadro("\(entr)", "Entregadas", T.gn)
-            recuadro("\(pend)", "Pendientes", T.am)
+            recuadro(contadoresListos ? ocs.count : 0, "Total OC", T.tx)
+            recuadro(contadoresListos ? entr : 0, "Entregadas", T.gn)
+            recuadro(contadoresListos ? pend : 0, "Pendientes", T.am)
+        }
+        .task {
+            try? await Task.sleep(nanoseconds: 350_000_000)
+            contadoresListos = true
         }
     }
 
-    private func recuadro(_ n: String, _ titulo: String, _ color: Color) -> some View {
+    private func recuadro(_ n: Int, _ titulo: String, _ color: Color) -> some View {
         VStack(spacing: 4) {
-            Text(n).font(T.syne(22)).foregroundStyle(color)
+            Text("\(n)").font(T.syne(22)).foregroundStyle(color)
+                .contentTransition(.numericText(value: Double(n)))
+                .animation(.smooth(duration: 0.9), value: n)
             Text(titulo.uppercased()).font(T.mono(9, .medium)).kerning(0.6).foregroundStyle(T.tx3)
         }
         .frame(maxWidth: .infinity)
@@ -196,16 +302,16 @@ struct ListaOC: View {
     private var botones: some View {
         VStack(spacing: 6) {
             HStack(spacing: 6) {
-                Button("🏆 Proveedores") { abrirProveedores() }
+                Button { abrirProveedores() } label: { ic("trophy", "Proveedores") }
                     .buttonStyle(BotonPWA(tipo: .blanco))
-                Button("🏗 Obras") { withAnimation(.easeOut(duration: 0.15)) { verObras.toggle() } }
+                Button { withAnimation(.easeOut(duration: 0.15)) { verObras.toggle() } } label: { ic("building.2", "Obras") }
                     .buttonStyle(BotonPWA(tipo: verObras ? .suave(T.blL, T.bl, T.blM) : .blanco))
-                Button("👷 Encargados") { withAnimation(.easeOut(duration: 0.15)) { verEncargados.toggle() } }
+                Button { withAnimation(.easeOut(duration: 0.15)) { verEncargados.toggle() } } label: { ic("person.2", "Encargados") }
                     .buttonStyle(BotonPWA(tipo: verEncargados ? .suave(T.gnL, T.gn, T.gnM) : .blanco))
             }
             .lineLimit(1).minimumScaleFactor(0.8)
             if store.puedeEditar {
-                Button("+ Nueva OC") { nuevaOC = true }
+                Button { nuevaOC = true } label: { ic("plus", "Nueva OC") }
                     .buttonStyle(BotonPWA())
             }
         }
@@ -230,13 +336,13 @@ struct BotonNuevaOC: View {
     var body: some View {
         if #available(iOS 26.0, *) {
             Button(action: accion) {
-                Text("➕ Nueva OC").font(T.sans(15, .bold)).padding(.horizontal, 8).padding(.vertical, 4)
+                ic("plus", "Nueva OC").font(T.sans(15, .bold)).padding(.horizontal, 8).padding(.vertical, 4)
             }
             .buttonStyle(.glassProminent)
             .tint(T.bl)
         } else {
             Button(action: accion) {
-                Text("➕ Nueva OC")
+                ic("plus", "Nueva OC")
                     .font(T.sans(14, .bold))
                     .foregroundStyle(.white)
                     .padding(.horizontal, 22).padding(.vertical, 14)
@@ -276,22 +382,55 @@ struct FranjaPrueba: View {
 }
 
 
+/// Lo que se puede elegir al mantener apretada una OC.
+enum AccionOC { case pdf, whatsapp, copiar, editar, urgente, eliminar }
+
 /// Tarjeta de OC de la lista (`cardOC` de la PWA). Al tocarla se abre ahí mismo (▼) y muestra todo.
+/// Al mantenerla apretada: vista previa de la OC + menú de acciones rápidas (v0.19).
 struct TarjetaOC: View {
+    @Environment(Store.self) private var store
     let oc: OC
     let rubro: Rubro?
     let abierta: Bool
     let alTocar: () -> Void
+    var alMenu: (AccionOC) -> Void = { _ in }
 
     var body: some View {
         VStack(spacing: 0) {
-            Button(action: alTocar) { encabezado }.buttonStyle(.plain)
+            Button(action: alTocar) { encabezado }
+                .buttonStyle(.plain)
+                // El menú va solo en la parte de arriba: así no se mezcla con los campos de texto de la OC abierta.
+                .contextMenu { menu } preview: { VistaPreviaOC(oc: oc, rubro: rubro) }
             if abierta {
                 Rectangle().fill(T.bd).frame(height: 1)
                 CuerpoOC(oc: oc)
+                    .transition(.asymmetric(insertion: .opacity.combined(with: .offset(y: -10)),
+                                            removal: .opacity))
             }
         }
         .tarjeta(fondo: oc.urgente ? T.urgenteFondo : T.sf, bordeIzq: oc.urgente ? T.urgente : nil)
+    }
+
+    @ViewBuilder private var menu: some View {
+        Section {
+            Button { alMenu(.pdf) } label: { Label("Ver / imprimir PDF", systemImage: "doc.text") }
+            Button { alMenu(.whatsapp) } label: { Label("Mandar por WhatsApp", systemImage: "paperplane") }
+            Button { alMenu(.copiar) } label: { Label("Copiar N° de OC", systemImage: "doc.on.doc") }
+        }
+        if store.puedeEditar {
+            if oc.estado != "entregado" {
+                Section {
+                    Button { alMenu(.editar) } label: { Label("Editar", systemImage: "pencil") }
+                    Button { alMenu(.urgente) } label: {
+                        Label(oc.urgente ? "Quitar urgente" : "Marcar urgente",
+                              systemImage: oc.urgente ? "checkmark.circle" : "exclamationmark.circle")
+                    }
+                }
+            }
+            Section {
+                Button(role: .destructive) { alMenu(.eliminar) } label: { Label("Eliminar", systemImage: "trash") }
+            }
+        }
     }
 
     private var encabezado: some View {
@@ -303,7 +442,7 @@ struct TarjetaOC: View {
                     Etiqueta.estado(oc)
                     if !oc.obra.isEmpty { Etiqueta.obra(oc.obra) }
                     if let rubro { Etiqueta.rubro(rubro) }
-                    if !oc.remito.isEmpty { Etiqueta(texto: "🧾", fondo: T.gnL, color: T.gn, borde: T.gnM) }
+                    if !oc.remito.isEmpty { Etiqueta(texto: "", fondo: T.gnL, color: T.gn, borde: T.gnM, icono: "doc.plaintext") }
                     if let f = oc.facturaPrincipal { Etiqueta.factura(f) }
                 }
                 Text((oc.proveedor.isEmpty ? "Sin proveedor" : oc.proveedor)
@@ -313,8 +452,8 @@ struct TarjetaOC: View {
                 Text("Entrega: \(oc.fecha.isEmpty ? "sin fecha" : oc.fecha)")
                     .font(T.mono(11)).foregroundStyle(T.tx3)
             }
-            Text("▼")
-                .font(.system(size: 10))
+            Image(systemName: "chevron.down")
+                .font(.system(size: 11, weight: .semibold))
                 .foregroundStyle(T.tx3)
                 .rotationEffect(.degrees(abierta ? 180 : 0))
                 .animation(.easeOut(duration: 0.2), value: abierta)
@@ -333,7 +472,7 @@ struct TarjetaImportada: View {
         VStack(alignment: .leading, spacing: 4) {
             Renglones(espacio: 5) {
                 Text(oc.num.isEmpty ? "—" : oc.num).font(T.syne(14)).foregroundStyle(T.bl)
-                Etiqueta(texto: "📥 Importada de PDF", fondo: T.sf, color: T.am, borde: T.amM)
+                Etiqueta(texto: "Importada de PDF", fondo: T.sf, color: T.am, borde: T.amM, icono: "tray.and.arrow.down")
                 Etiqueta(texto: "Sin asignar", fondo: T.amL, color: T.am, borde: T.amM)
             }
             Text(oc.proveedor.isEmpty ? "Sin proveedor" : oc.proveedor).font(T.sans(13)).foregroundStyle(T.tx2)
@@ -368,7 +507,7 @@ struct AsignarImportada: View {
                     }
                 }
                 if !oc.notas.isEmpty { Section("Notas") { Text(oc.notas) } }
-                Section("⚙ Asignar obra y encargado") {
+                Section {
                     Picker("Obra *", selection: $obra) {
                         Text("— Seleccionar —").tag("")
                         ForEach(store.obras, id: \.self) { Text($0).tag($0) }
@@ -378,9 +517,9 @@ struct AsignarImportada: View {
                         ForEach(store.encargados, id: \.self) { Text($0).tag($0) }
                     }
                     TextField("Proveedor", text: $prov)
-                    Button("✓ Guardar asignación y activar OC") { guardar() }
-                }
-                Section { Button("🗑 Eliminar", role: .destructive) { preguntarBorrar = true } }
+                    Button { guardar() } label: { ic("checkmark.circle", "Guardar asignación y activar OC") }
+                } header: { ic("gearshape", "Asignar obra y encargado") }
+                Section { Button(role: .destructive) { Vibrar.aviso(); preguntarBorrar = true } label: { ic("trash", "Eliminar") } }
             }
             .scrollContentBackground(.hidden).background(T.bg).font(T.sans(15))
             .navigationTitle("OC \(oc.num)").navigationBarTitleDisplayMode(.inline)
@@ -395,6 +534,7 @@ struct AsignarImportada: View {
             .alert("No se guardó", isPresented: Binding(get: { error != nil }, set: { if !$0 { error = nil } })) {
                 Button("OK", role: .cancel) {}
             } message: { Text(error ?? "") }
+            .vibrarAlError(error)
         }
     }
 
@@ -405,5 +545,50 @@ struct AsignarImportada: View {
                 dismiss()
             }
         }
+    }
+}
+
+/// Lo que aparece arriba del menú al mantener apretada una OC: los datos principales y los materiales.
+struct VistaPreviaOC: View {
+    let oc: OC
+    let rubro: Rubro?
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Renglones(espacio: 6) {
+                Text(oc.num.isEmpty ? "—" : oc.num).font(T.syne(17)).foregroundStyle(T.bl)
+                if oc.urgente { Etiqueta.urgente() }
+                Etiqueta.estado(oc)
+                if let rubro { Etiqueta.rubro(rubro) }
+            }
+            VStack(alignment: .leading, spacing: 3) {
+                ic("storefront", oc.proveedor.isEmpty ? "Sin proveedor" : oc.proveedor)
+                    .font(T.sans(14, .semibold)).foregroundStyle(T.tx)
+                if !oc.obra.isEmpty { ic("building.2", oc.obra).font(T.sans(13)).foregroundStyle(T.tx2) }
+                if !oc.responsable.isEmpty { ic("person", oc.responsable).font(T.sans(13)).foregroundStyle(T.tx2) }
+                ic("calendar", "Entrega: \(oc.fecha.isEmpty ? "sin fecha" : oc.fecha)").font(T.mono(11)).foregroundStyle(T.tx3)
+            }
+            Rectangle().fill(T.bd).frame(height: 1)
+            Rotulo(texto: "Materiales")
+            if oc.items.isEmpty {
+                Text("Sin ítems").font(T.sans(13)).foregroundStyle(T.tx3)
+            }
+            ForEach(oc.items.prefix(8)) { it in
+                HStack(alignment: .firstTextBaseline, spacing: 8) {
+                    Text(it.desc).frame(maxWidth: .infinity, alignment: .leading).lineLimit(2)
+                    Text(it.cant + (it.unit.isEmpty ? "" : " " + it.unit)).foregroundStyle(T.tx2)
+                }
+                .font(T.sans(13)).foregroundStyle(T.tx)
+            }
+            if oc.items.count > 8 {
+                Text("y \(oc.items.count - 8) más…").font(T.sans(12)).foregroundStyle(T.tx3)
+            }
+            if !oc.notas.isEmpty {
+                Text(oc.notas).font(T.sans(12)).foregroundStyle(T.tx2).lineLimit(3)
+            }
+        }
+        .padding(16)
+        .frame(width: 340, alignment: .leading)
+        .background(oc.urgente ? T.urgenteFondo : T.sf)
     }
 }

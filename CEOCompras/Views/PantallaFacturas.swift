@@ -42,7 +42,7 @@ struct PantallaFacturas: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: 12) {
                     if store.modoPrueba { FranjaPrueba() }
-                    Text("🧾 Cargar factura").font(T.syne(20)).foregroundStyle(T.bl)
+                    ic("receipt", "Cargar factura").font(T.syne(20)).foregroundStyle(T.bl)
                     switch paso {
                     case .inicio: inicio
                     case .leyendo:
@@ -77,6 +77,7 @@ struct PantallaFacturas: View {
             .alert("No se guardó", isPresented: Binding(get: { error != nil }, set: { if !$0 { error = nil } })) {
                 Button("OK", role: .cancel) {}
             } message: { Text(error ?? "") }
+            .vibrarAlError(error)
         }
     }
 
@@ -86,7 +87,7 @@ struct PantallaFacturas: View {
         VStack(alignment: .leading, spacing: 12) {
             Picker("Modo", selection: $modoPistola) {
                 Text("Normal").tag(false)
-                Text("🔫 Pistola").tag(true)
+                Text("Pistola").tag(true)
             }
             .pickerStyle(.segmented)
             if modoPistola { inicioPistola } else { inicioNormal }
@@ -106,7 +107,7 @@ struct PantallaFacturas: View {
                     Text("Guardar no está habilitado.").font(T.sans(13)).foregroundStyle(T.rd)
                 } else {
                     Button { pistolaAbierta = true } label: {
-                        Text(tanda.isEmpty ? "🔫 Empezar a escanear" : "🔫 Seguir escaneando").font(T.sans(16, .semibold))
+                        ic("qrcode.viewfinder", tanda.isEmpty ? "Empezar a escanear" : "Seguir escaneando").font(T.sans(16, .semibold))
                     }
                     .buttonStyle(BotonGrande(color: T.bl))
                 }
@@ -120,7 +121,7 @@ struct PantallaFacturas: View {
     private var tarjetaTanda: some View {
         let ids = ocsDeLaTanda()
         return VStack(alignment: .leading, spacing: 10) {
-            Text("✅ \(tanda.count) factura\(tanda.count == 1 ? "" : "s") cargada\(tanda.count == 1 ? "" : "s") en esta tanda")
+            ic("checkmark.circle.fill", "\(tanda.count) factura\(tanda.count == 1 ? "" : "s") cargada\(tanda.count == 1 ? "" : "s") en esta tanda")
                 .font(T.sans(15, .bold)).foregroundStyle(Color(hex: 0x065F46))
             VStack(alignment: .leading, spacing: 3) {
                 ForEach(tanda) { c in
@@ -130,7 +131,7 @@ struct PantallaFacturas: View {
             Button {
                 imprimirTanda()
             } label: {
-                Text("🖨️ Imprimir las \(ids.count) OC (un solo PDF)").font(T.sans(15, .semibold))
+                ic("printer", "Imprimir las \(ids.count) OC (un solo PDF)").font(T.sans(15, .semibold))
             }
             .buttonStyle(BotonGrande(color: T.bl))
             .disabled(trabajando || ids.isEmpty)
@@ -180,21 +181,21 @@ struct PantallaFacturas: View {
             Text("La app lee sola el número y el importe del QR de AFIP. No hace falta descargar la factura: alcanza con la cámara.")
                 .font(T.sans(13)).foregroundStyle(T.tx3)
             if EscanerQR.disponible {
-                Button { avisoCamara = nil; camara = true } label: { Text("📷 Escanear el QR con la cámara").font(T.sans(15, .semibold)) }
+                Button { avisoCamara = nil; camara = true } label: { ic("camera", "Escanear el QR con la cámara").font(T.sans(15, .semibold)) }
                     .buttonStyle(BotonGrande(color: T.bl))
             }
-            Button { elegirPDF = true } label: { Text("📄 Elegir el PDF de la factura").font(T.sans(14, .semibold)) }
+            Button { elegirPDF = true } label: { ic("doc.text", "Elegir el PDF de la factura").font(T.sans(14, .semibold)) }
                 .buttonStyle(BotonPWA(tipo: .suave(.white, T.bl, T.bl)))
             PhotosPicker(selection: $foto, matching: .images) {
-                Text("🖼 Elegir una captura o foto del QR").font(T.sans(14, .semibold))
+                ic("photo", "Elegir una captura o foto del QR").font(T.sans(14, .semibold))
                     .frame(maxWidth: .infinity).padding(.vertical, 9)
                     .background(Color.white, in: RoundedRectangle(cornerRadius: 8))
                     .overlay(RoundedRectangle(cornerRadius: 8).stroke(T.bl, lineWidth: 1))
                     .foregroundStyle(T.bl)
             }
-            Button { abrirManual(texto: "", avisoQR: false) } label: { Text("✍️ Cargar a mano").font(T.sans(13)) }
+            Button { abrirManual(texto: "", avisoQR: false) } label: { ic("square.and.pencil", "Cargar a mano").font(T.sans(13)) }
                 .buttonStyle(BotonPWA(tipo: .blanco))
-            Text("💡 Si la factura te llegó por WhatsApp o mail, guardá el PDF en Archivos y elegilo con \"📄 Elegir el PDF\": así después podés imprimir la OC y la factura juntas.")
+            ic("lightbulb", "Si la factura te llegó por WhatsApp o mail, guardá el PDF en Archivos y elegilo con \"Elegir el PDF\": así después podés imprimir la OC y la factura juntas.")
                 .font(T.sans(12)).foregroundStyle(T.tx3)
         }
         .padding(14)
@@ -220,7 +221,7 @@ struct PantallaFacturas: View {
         VStack(alignment: .leading, spacing: 10) {
             Text(m).font(T.sans(13)).foregroundStyle(Color(hex: 0x92400E))
             if botonManual {
-                Button("✍️ Cargar a mano") { abrirManual(texto: textoPDF, avisoQR: false) }.buttonStyle(BotonPWA())
+                Button { abrirManual(texto: textoPDF, avisoQR: false) } label: { ic("square.and.pencil", "Cargar a mano") }.buttonStyle(BotonPWA())
             }
             Button("Volver") { reiniciar() }.buttonStyle(BotonPWA(tipo: .blanco))
         }
@@ -232,13 +233,13 @@ struct PantallaFacturas: View {
     private func manual(_ avisoQR: Bool) -> some View {
         VStack(alignment: .leading, spacing: 12) {
             if avisoQR {
-                Text("⚠️ El QR de esta factura no es válido.\nEl sistema del proveedor imprimió un QR que no corresponde a esta factura, así que no se puede usar. "
+                ic("exclamationmark.triangle", "El QR de esta factura no es válido.\nEl sistema del proveedor imprimió un QR que no corresponde a esta factura, así que no se puede usar. "
                      + (textoPDF.isEmpty ? "Completá los datos a mano y confirmá." : "Revisá los datos que tomé del PDF y confirmá."))
                     .font(T.sans(13)).foregroundStyle(Color(hex: 0x92400E))
                     .padding(12).frame(maxWidth: .infinity, alignment: .leading)
                     .background(Color(hex: 0xFEF3C7), in: RoundedRectangle(cornerRadius: 10))
             }
-            Text("✍️ Cargar factura a mano").font(T.sans(14, .bold)).foregroundStyle(T.bl)
+            ic("square.and.pencil", "Cargar factura a mano").font(T.sans(14, .bold)).foregroundStyle(T.bl)
             Text("Revisá los datos (precargué lo que pude leer) y confirmá.").font(T.sans(12)).foregroundStyle(T.tx3)
             HStack {
                 Text("N° de factura").font(T.sans(13)).foregroundStyle(T.tx3).frame(width: 105, alignment: .leading)
@@ -282,8 +283,8 @@ struct PantallaFacturas: View {
 
     private func datosFactura(_ f: EnCurso, _ prov: FichaProveedor?) -> some View {
         VStack(alignment: .leading, spacing: 8) {
-            Text(f.fuente == "manual" ? "✍️ CARGADA A MANO" : f.fuente == "camara" ? "📷 QR ESCANEADO CON LA CÁMARA"
-                 : f.fuente == "imagen" ? "📋 QR LEÍDO DE LA IMAGEN" : "✓ FACTURA LEÍDA DEL PDF")
+            (f.fuente == "manual" ? ic("square.and.pencil", "CARGADA A MANO") : f.fuente == "camara" ? ic("camera", "QR ESCANEADO CON LA CÁMARA")
+                 : f.fuente == "imagen" ? ic("photo", "QR LEÍDO DE LA IMAGEN") : ic("checkmark", "FACTURA LEÍDA DEL PDF"))
                 .font(T.mono(11, .medium)).foregroundStyle(T.gn)
             fila("N° de factura") { Text(f.num).font(T.mono(14, .medium)) }
             fila("Importe total") { Text(Formato.pesos(f.total)).font(T.sans(14, .bold)) }
@@ -331,9 +332,9 @@ struct PantallaFacturas: View {
             }
             let val = provEscrito.trimmingCharacters(in: .whitespaces)
             if !val.isEmpty && !sugerencias.contains(where: { $0.nombre.lowercased() == val.lowercased() }) {
-                Button("➕ Crear proveedor \"\(val)\"") {
+                Button {
                     correr({ await store.crearProveedor(val, cuit: f.cuit) }, ok: "✅ Proveedor creado con el CUIT")
-                }
+                } label: { ic("plus", "Crear proveedor \"\(val)\"") }
                 .font(T.sans(13, .semibold)).foregroundStyle(T.bl)
             }
         }
@@ -346,7 +347,7 @@ struct PantallaFacturas: View {
             (Text("¿A qué OC corresponde?").foregroundStyle(T.bl).bold()
              + Text(prov.map { " — \($0.nombre)" } ?? "").foregroundStyle(T.tx3))
                 .font(T.sans(13))
-            TextField("🔍 Buscar OC, obra o proveedor", text: $busqueda).campoPWA()
+            TextField("Buscar OC, obra o proveedor", text: $busqueda).campoPWA()
             VStack(spacing: 0) {
                 if lista.isEmpty {
                     Text("No hay OC para mostrar. Probá el buscador.").font(T.sans(13)).foregroundStyle(T.tx3).padding(12)
@@ -357,7 +358,7 @@ struct PantallaFacturas: View {
             .overlay(RoundedRectangle(cornerRadius: 8).stroke(T.bd))
             resumen(f)
             if pdf != nil {
-                Button("🖨️ Imprimir / compartir OC + factura") { armarCombo(f) }
+                Button { armarCombo(f) } label: { ic("printer", "Imprimir / compartir OC + factura") }
                     .buttonStyle(BotonPWA(tipo: .suave(.white, T.bl, T.bl))).disabled(n == 0)
             } else {
                 Text("La factura entró sin el PDF (cámara o imagen), así que no se puede armar el PDF \"OC + factura\". La OC se imprime con su botón de siempre.")
@@ -420,7 +421,7 @@ struct PantallaFacturas: View {
             } else {
                 let suma = valores.compactMap { $0 }.reduce(0, +)
                 if abs(suma - f.total) < 0.05 {
-                    cartel("✓ La suma coincide con el total de la factura", verde: true)
+                    cartel("La suma coincide con el total de la factura", verde: true, icono: "checkmark.circle.fill")
                 } else {
                     let dif = f.total - suma
                     cartel("Suma \(Formato.pesos(suma)) / Total \(Formato.pesos(f.total)) · \(dif > 0 ? "faltan" : "sobran") \(Formato.pesos(abs(dif)))", verde: false)
@@ -429,8 +430,8 @@ struct PantallaFacturas: View {
         }
     }
 
-    private func cartel(_ t: String, verde: Bool) -> some View {
-        Text(t).font(T.sans(13, .semibold))
+    private func cartel(_ t: String, verde: Bool, icono: String? = nil) -> some View {
+        (icono.map { ic($0, t) } ?? Text(t)).font(T.sans(13, .semibold))
             .foregroundStyle(verde ? Color(hex: 0x065F46) : Color(hex: 0x92400E))
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding(.horizontal, 10).padding(.vertical, 8)
@@ -439,18 +440,18 @@ struct PantallaFacturas: View {
 
     private func guardada(_ n: Int) -> some View {
         VStack(alignment: .leading, spacing: 10) {
-            Text("✅ Factura \(f?.num ?? "") guardada en \(n) OC").font(T.sans(15, .bold)).foregroundStyle(Color(hex: 0x065F46))
+            ic("checkmark.circle.fill", "Factura \(f?.num ?? "") guardada en \(n) OC").font(T.sans(15, .bold)).foregroundStyle(Color(hex: 0x065F46))
             Text("Cada OC quedó con el N° de factura y su importe.").font(T.sans(12)).foregroundStyle(Color(hex: 0x065F46))
             if pdf != nil, let f {
-                Button("🖨️ Imprimir / compartir OC + factura") { armarCombo(f) }.buttonStyle(BotonPWA())
+                Button { armarCombo(f) } label: { ic("printer", "Imprimir / compartir OC + factura") }.buttonStyle(BotonPWA())
             }
             // Imprimir cada OC (como "Generar OC" de la ficha), aunque la factura haya entrado sin PDF
             ForEach(store.ordenes.filter { tildadasGuardadas.contains($0.id) }.sorted { $0.numeroEntero < $1.numeroEntero }) { o in
-                Button("📄 Imprimir OC \(o.num)") { generarOC(o) }
+                Button { generarOC(o) } label: { ic("doc.text", "Imprimir OC \(o.num)") }
                     .buttonStyle(BotonPWA(tipo: .suave(T.blL, T.bl, T.blM)))
                     .disabled(trabajando)
             }
-            Button("➕ Cargar otra factura") { reiniciar() }.buttonStyle(BotonPWA(tipo: .blanco))
+            Button { reiniciar() } label: { ic("plus", "Cargar otra factura") }.buttonStyle(BotonPWA(tipo: .blanco))
         }
         .padding(16)
         .background(Color(hex: 0xECFDF5), in: RoundedRectangle(cornerRadius: 12))

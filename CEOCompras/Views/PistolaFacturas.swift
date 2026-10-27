@@ -76,6 +76,7 @@ struct PistolaFacturas: View {
         .alert("No se guardó", isPresented: Binding(get: { error != nil }, set: { if !$0 { error = nil } })) {
             Button("OK", role: .cancel) {}
         } message: { Text(error ?? "") }
+        .vibrarAlError(error)
         .confirmationDialog(aDeshacer.map { "¿Deshacer la factura \($0.facNum) de la OC \($0.ocNum)?" } ?? "",
                             isPresented: Binding(get: { aDeshacer != nil }, set: { if !$0 { aDeshacer = nil } }),
                             titleVisibility: .visible) {
@@ -90,7 +91,7 @@ struct PistolaFacturas: View {
         VStack(spacing: 0) {
             if store.modoPrueba { FranjaPrueba() }
             HStack {
-                Text("🔫 Modo pistola").font(T.syne(17)).foregroundStyle(T.bl)
+                ic("qrcode.viewfinder", "Modo pistola").font(T.syne(17)).foregroundStyle(T.bl)
                 Text("\(cargadas.count) cargada\(cargadas.count == 1 ? "" : "s")")
                     .font(T.sans(12, .semibold)).foregroundStyle(T.gn)
                     .padding(.horizontal, 8).padding(.vertical, 3)
@@ -108,14 +109,14 @@ struct PistolaFacturas: View {
         VStack(alignment: .leading, spacing: 10) {
             Text("Apuntá al QR de AFIP de la próxima factura").font(T.sans(15, .bold)).foregroundStyle(T.bl)
             Text("Cuando la lea vas a escuchar un bip. Después tocás la OC y listo.").font(T.sans(12)).foregroundStyle(T.tx3)
-            Button("✍️ Esta factura no tiene QR: cargar a mano") { abrirManual(trucho: false) }
+            Button { abrirManual(trucho: false) } label: { ic("square.and.pencil", "Esta factura no tiene QR: cargar a mano") }
                 .buttonStyle(BotonPWA(tipo: .blanco))
             if !cargadas.isEmpty {
                 Text("CARGADAS EN ESTA TANDA").font(T.mono(11, .medium)).foregroundStyle(T.tx3).padding(.top, 6)
                 VStack(spacing: 0) {
                     ForEach(cargadas.reversed()) { c in
                         HStack(spacing: 8) {
-                            Text("✓").foregroundStyle(T.gn).bold()
+                            Image(systemName: "checkmark").font(.system(size: 13, weight: .bold)).foregroundStyle(T.gn)
                             VStack(alignment: .leading, spacing: 1) {
                                 Text("\(c.facNum) → OC \(c.ocNum)").font(T.mono(12, .medium)).foregroundStyle(T.tx)
                                 Text(c.proveedor + (c.obra.isEmpty ? "" : " · \(c.obra)") + " · " + Formato.pesos(c.total))
@@ -156,7 +157,7 @@ struct PistolaFacturas: View {
                                         : "El CUIT \(Facturas.fmtCuit(f.cuit)) no está en el padrón: buscá la OC por proveedor, obra o número. Al elegirla, le anoto el CUIT a ese proveedor (si no tenía).")
                         .font(T.sans(12)).foregroundStyle(T.am)
                 }
-                TextField("🔍 Buscar OC, obra o proveedor", text: $busqueda).campoPWA()
+                TextField("Buscar OC, obra o proveedor", text: $busqueda).campoPWA()
                 Text(lista.isEmpty ? "No hay OC sin factura para mostrar. Probá el buscador."
                                    : "Tocá la OC de esta factura (se le asigna el total; si la OC ya tiene otra factura, se suman):")
                     .font(T.sans(12)).foregroundStyle(T.tx3)
@@ -195,12 +196,12 @@ struct PistolaFacturas: View {
     private var manual: some View {
         VStack(alignment: .leading, spacing: 12) {
             if qrTrucho {
-                Text("⚠️ El QR de esta factura no es válido (el sistema del proveedor imprime uno que no corresponde). Cargá el número y el total a mano.")
+                ic("exclamationmark.triangle", "El QR de esta factura no es válido (el sistema del proveedor imprime uno que no corresponde). Cargá el número y el total a mano.")
                     .font(T.sans(13)).foregroundStyle(Color(hex: 0x92400E))
                     .padding(12).frame(maxWidth: .infinity, alignment: .leading)
                     .background(Color(hex: 0xFEF3C7), in: RoundedRectangle(cornerRadius: 10))
             }
-            Text("✍️ Factura a mano").font(T.sans(14, .bold)).foregroundStyle(T.bl)
+            ic("square.and.pencil", "Factura a mano").font(T.sans(14, .bold)).foregroundStyle(T.bl)
             HStack {
                 Text("N° de factura").font(T.sans(13)).foregroundStyle(T.tx3).frame(width: 105, alignment: .leading)
                 TextField("0001", text: $mPv).keyboardType(.numberPad).multilineTextAlignment(.center).campoPWA().frame(width: 76)

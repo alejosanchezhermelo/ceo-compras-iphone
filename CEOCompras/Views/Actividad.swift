@@ -4,6 +4,8 @@ import SwiftUI
 struct PantallaActividad: View {
     @Environment(Store.self) private var store
     @State private var cuantos = 150
+    /// Los renglones "fantasma" se muestran hasta 10 segundos mientras llega el historial.
+    @State private var esperandoDatos = true
 
     var body: some View {
         NavigationStack {
@@ -13,7 +15,10 @@ struct PantallaActividad: View {
                     VStack(alignment: .leading, spacing: 0) {
                         Text("Actividad reciente").font(T.syne(15)).foregroundStyle(T.tx)
                             .padding(.bottom, 6)
-                        if store.eventos.isEmpty {
+                        if store.eventos.isEmpty && esperandoDatos && store.mensajeConexion == nil {
+                            ForEach([210, 160, 230, 140, 190, 170], id: \.self) { EventoFantasma(ancho: CGFloat($0)) }
+                                .transition(.opacity)
+                        } else if store.eventos.isEmpty {
                             Text("Sin actividad aún").font(T.sans(13)).foregroundStyle(T.tx3).padding(.vertical, 12)
                         }
                         ForEach(store.eventos.prefix(cuantos)) { ev in
@@ -27,11 +32,16 @@ struct PantallaActividad: View {
                     }
                     .padding(.horizontal, 16).padding(.vertical, 14)
                     .tarjeta()
+                    .animation(.easeOut(duration: 0.35), value: store.eventos.isEmpty)
                 }
                 .padding(14)
             }
             .background(T.bg)
             .refreshable { await store.reconectar() }
+            .task {
+                try? await Task.sleep(nanoseconds: 10_000_000_000)
+                esperandoDatos = false
+            }
             .navigationBarTitleDisplayMode(.inline)
             .conEncabezado()
         }

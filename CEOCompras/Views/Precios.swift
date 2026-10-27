@@ -31,7 +31,7 @@ struct PantallaPrecios: View {
                     if store.modoPrueba { FranjaPrueba() }
                     if store.puedeEditar { nuevaLista }
                     comparador
-                    Text("📋 Listas guardadas").font(T.syne(15)).padding(.top, 4)
+                    ic("list.bullet.rectangle", "Listas guardadas").font(T.syne(15)).padding(.top, 4)
                     guardadas
                 }
                 .padding(14)
@@ -56,6 +56,7 @@ struct PantallaPrecios: View {
             .alert("No se guardó", isPresented: Binding(get: { error != nil }, set: { if !$0 { error = nil } })) {
                 Button("OK", role: .cancel) {}
             } message: { Text(error ?? "") }
+            .vibrarAlError(error)
         }
     }
 
@@ -65,7 +66,7 @@ struct PantallaPrecios: View {
 
     private var nuevaLista: some View {
         VStack(alignment: .leading, spacing: 10) {
-            Text("➕ Nueva lista de precios").font(T.syne(15))
+            ic("plus.circle", "Nueva lista de precios").font(T.syne(15))
             TextField("Proveedor *", text: $prov).textInputAutocapitalization(.words).campoPWA()
             Toggle("Fecha de la lista", isOn: $conFecha.animation()).font(T.sans(14))
             if conFecha {
@@ -73,8 +74,8 @@ struct PantallaPrecios: View {
                     .environment(\.locale, Locale(identifier: "es_AR")).font(T.sans(14))
             }
             Picker("", selection: $modoArchivo) {
-                Text("📝 Cargar manualmente").tag(false)
-                Text("📎 Subir PDF / imagen").tag(true)
+                Text("Cargar manualmente").tag(false)
+                Text("Subir PDF / imagen").tag(true)
             }
             .pickerStyle(.segmented)
 
@@ -97,7 +98,7 @@ struct PantallaPrecios: View {
             } else {
                 Button { elegirArchivo = true } label: {
                     VStack(spacing: 6) {
-                        Text("📎").font(.largeTitle)
+                        Image(systemName: "paperclip").font(.largeTitle).foregroundStyle(T.tx3)
                         Text(archivo?.nombre ?? "Tocá para elegir un PDF o una imagen").font(T.sans(13))
                             .foregroundStyle(archivo == nil ? T.tx3 : T.bl)
                     }
@@ -107,7 +108,7 @@ struct PantallaPrecios: View {
                 }
                 .buttonStyle(.plain)
                 if let a = archivo, a.tipo == "application/pdf" {
-                    Button("🔍 Extraer precios del PDF automáticamente") { extraer(a.datos) }.buttonStyle(BotonPWA())
+                    Button { extraer(a.datos) } label: { ic("doc.text.magnifyingglass", "Extraer precios del PDF automáticamente") }.buttonStyle(BotonPWA())
                 }
                 if let m = mensajeExtraer { Text(m).font(T.sans(13)).foregroundStyle(m.hasPrefix("✅") ? T.gn : T.rd) }
             }
@@ -123,7 +124,7 @@ struct PantallaPrecios: View {
         let manuales = store.listasPrecios.filter { $0.tipo == "manual" }.sorted { $0.ts > $1.ts }
         if manuales.count >= 2 {
             VStack(alignment: .leading, spacing: 10) {
-                Text("⚖️ Comparar dos proveedores").font(T.syne(15))
+                ic("scalemass", "Comparar dos proveedores").font(T.syne(15))
                 selectorLista("Proveedor 1", $cmp1, manuales)
                 selectorLista("Proveedor 2", $cmp2, manuales)
                 if let l1 = manuales.first(where: { $0.id == cmp1 }), let l2 = manuales.first(where: { $0.id == cmp2 }) {
@@ -197,7 +198,7 @@ struct PantallaPrecios: View {
                         VStack(alignment: .leading, spacing: 2) {
                             Text(p).font(T.sans(14, .semibold)).foregroundStyle(T.tx)
                             Text((listas.count > 1 ? "\(listas.count) listas · " : "") + (ultima.fecha.isEmpty ? "" : "Última: \(ultima.fecha)")
-                                 + " · " + (ultima.tipo == "archivo" ? "📎 Archivo" : "\(ultima.items.count) productos"))
+                                 + " · " + (ultima.tipo == "archivo" ? "Archivo" : "\(ultima.items.count) productos"))
                                 .font(T.mono(11)).foregroundStyle(T.tx3)
                         }
                         Spacer()
@@ -219,7 +220,7 @@ struct PantallaPrecios: View {
                     if store.puedeEditar {
                         Divider()
                         ForEach(listas) { l in
-                            Button("🗑 Eliminar " + (l.tipo == "archivo" ? "PDF " : "lista ") + l.rotulo) { borrar = l }
+                            Button { Vibrar.aviso(); borrar = l } label: { ic("trash", "Eliminar " + (l.tipo == "archivo" ? "PDF " : "lista ") + l.rotulo) }
                                 .font(T.sans(12)).foregroundStyle(T.rd)
                         }
                     }
@@ -237,7 +238,7 @@ struct PantallaPrecios: View {
                     Image(uiImage: img).resizable().scaledToFit().clipShape(RoundedRectangle(cornerRadius: 8))
                 }
             } else {
-                Button("📄 Ver PDF") { abrirPDF(l) }.buttonStyle(BotonPWA(tipo: .suave(T.blL, T.bl, T.blM)))
+                Button { abrirPDF(l) } label: { ic("doc.text", "Ver PDF") }.buttonStyle(BotonPWA(tipo: .suave(T.blL, T.bl, T.blM)))
             }
         } else {
             VStack(spacing: 0) {
@@ -292,7 +293,7 @@ struct PantallaPrecios: View {
         guard let d = try? Data(contentsOf: url) else { error = "No se pudo leer el archivo"; return }
         if d.count > 2 * 1024 * 1024 { error = "El archivo es muy grande (máx. 2 MB)"; return }
         let tipo = UTType(filenameExtension: url.pathExtension)?.preferredMIMEType ?? "application/pdf"
-        archivo = (d, tipo, "📎 " + url.lastPathComponent)
+        archivo = (d, tipo, url.lastPathComponent)
         mensajeExtraer = nil
     }
 

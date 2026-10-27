@@ -85,7 +85,7 @@ struct FormularioOC: View {
                         .padding(.bottom, 20)
 
                     if let s = solicitud {
-                        Text("📋 SOLICITUD DE REFERENCIA").font(T.mono(10, .medium)).kerning(0.7).foregroundStyle(T.pp)
+                        ic("list.clipboard", "SOLICITUD DE REFERENCIA").font(T.mono(10, .medium)).kerning(0.7).foregroundStyle(T.pp)
                             .padding(.bottom, 5)
                         Text(s.texto)
                             .font(T.sans(13)).foregroundStyle(T.pp).lineSpacing(3)
@@ -149,6 +149,7 @@ struct FormularioOC: View {
         } message: {
             Text(error ?? "")
         }
+        .vibrarAlError(error)
         .alert("Ya existe una OC con el número \(b.num.trimmingCharacters(in: .whitespaces)). ¿Guardás igual?",
                isPresented: $preguntarRepetido) {
             Button("Guardar igual") { guardarYa() }
@@ -304,7 +305,7 @@ struct FormularioOC: View {
                         .campoItem()
                         .frame(width: 66)
                     Button { quitarItem(it.id) } label: {
-                        Text("✕").font(.system(size: 12)).foregroundStyle(T.tx3)
+                        Image(systemName: "xmark").font(.system(size: 11, weight: .semibold)).foregroundStyle(T.tx3)
                             .frame(width: 30, height: 34)
                             .overlay(RoundedRectangle(cornerRadius: 7).stroke(T.bd, lineWidth: 1))
                             .contentShape(Rectangle())

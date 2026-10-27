@@ -84,6 +84,7 @@ struct PantallaAjustes: View {
             .alert("No se guardó", isPresented: Binding(get: { error != nil }, set: { if !$0 { error = nil } })) {
                 Button("OK", role: .cancel) {}
             } message: { Text(error ?? "") }
+            .vibrarAlError(error)
         }
     }
 
@@ -146,7 +147,7 @@ struct PantallaAjustes: View {
                 .buttonStyle(.borderedProminent)
             }
         } header: {
-            Text("🔢 Numeración de OC")
+            ic("number", "Numeración de OC")
         } footer: {
             Text("Próximo número que se usará al generar el PDF. Corregilo si hace falta.")
         }
@@ -200,14 +201,14 @@ struct PantallaAjustes: View {
                 }
             }
         } header: {
-            Text("🏗 Obras")
+            ic("building.2", "Obras")
         }
     }
 
     // MARK: 👷 Encargados
 
     private var seccionEncargados: some View {
-        Section("👷 Encargados") {
+        Section {
             ForEach(store.encargados, id: \.self) { e in
                 HStack {
                     Text(e)
@@ -227,6 +228,8 @@ struct PantallaAjustes: View {
                 }
                 .disabled(encNuevo.trimmingCharacters(in: .whitespaces).isEmpty)
             }
+        } header: {
+            ic("person.2", "Encargados")
         }
     }
 
@@ -253,7 +256,7 @@ struct PantallaAjustes: View {
                 }
             }
         } header: {
-            Text("🏭 Proveedores guardados")
+            ic("person.text.rectangle", "Proveedores guardados")
         } footer: {
             Text("Se guardan al crear una OC. Eliminar acá solo lo saca de las sugerencias.")
         }
@@ -298,7 +301,7 @@ struct PantallaAjustes: View {
                 }
             }
         } header: {
-            Text("📱 Notificaciones WhatsApp")
+            ic("iphone", "Notificaciones WhatsApp")
         } footer: {
             Text("Contactos que reciben los avisos automáticos (OC nueva, editada, urgente).")
         }
@@ -319,6 +322,7 @@ struct PantallaAjustes: View {
     }
 
     private func confirmar(_ titulo: String, _ boton: String, destructiva: Bool = false, _ accion: @escaping () -> Void) {
+        if destructiva { Vibrar.aviso() }
         let p = Pregunta(titulo: titulo, boton: boton, destructiva: destructiva) {
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) { accion() }
         }

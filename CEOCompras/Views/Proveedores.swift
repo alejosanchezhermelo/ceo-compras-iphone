@@ -14,7 +14,7 @@ struct PantallaProveedores: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: 8) {
                     if store.modoPrueba { FranjaPrueba() }
-                    Text("🏆 Ranking de Proveedores").font(T.syne(16)).padding(.bottom, 4)
+                    ic("trophy", "Ranking de Proveedores").font(T.syne(16)).padding(.bottom, 4)
                     sinCuit
                     let filas = store.ranking()
                     if filas.isEmpty {
@@ -39,6 +39,7 @@ struct PantallaProveedores: View {
             .alert("No se guardó", isPresented: Binding(get: { error != nil }, set: { if !$0 { error = nil } })) {
                 Button("OK", role: .cancel) {}
             } message: { Text(error ?? "") }
+            .vibrarAlError(error)
         }
     }
 
@@ -83,7 +84,9 @@ struct PantallaProveedores: View {
         let lista = store.fichasProveedores.filter { !$0.nombre.isEmpty && $0.cuit.trimmingCharacters(in: .whitespaces).isEmpty }
         if !lista.isEmpty && store.puedeEditar {
             let cantOC: (FichaProveedor) -> Int = { p in store.ordenes.filter { $0.proveedor == p.nombre }.count }
-            Button(verSinCuit ? "▲ Ocultar proveedores sin CUIT" : "📋 Ver proveedores sin CUIT (\(lista.count))") { verSinCuit.toggle() }
+            Button { withAnimation(.easeOut(duration: 0.2)) { verSinCuit.toggle() } } label: {
+                verSinCuit ? ic("chevron.up", "Ocultar proveedores sin CUIT") : ic("list.clipboard", "Ver proveedores sin CUIT (\(lista.count))")
+            }
                 .buttonStyle(BotonPWA(tipo: .blanco))
             if verSinCuit {
                 VStack(alignment: .leading, spacing: 8) {
@@ -158,7 +161,7 @@ struct FichaProveedorVista: View {
                         Text("\(ocs.count) OC · \(pct)% entregas completas").font(T.sans(12)).foregroundStyle(T.tx3)
                     }
                     VStack(alignment: .leading, spacing: 10) {
-                        Text("📋 DATOS DE CONTACTO").font(T.mono(11, .medium)).foregroundStyle(T.bl)
+                        ic("person.crop.circle", "DATOS DE CONTACTO").font(T.mono(11, .medium)).foregroundStyle(T.bl)
                         campo("Teléfono", $tel, "Ej: 3413001234", teclado: .phonePad) {
                             if !Facturas.soloDigitos(tel).isEmpty {
                                 Button("WA") { if let u = URL(string: "https://wa.me/549" + Facturas.soloDigitos(tel)) { openURL(u) } }
@@ -169,7 +172,7 @@ struct FichaProveedorVista: View {
                         }
                         campo("Mail", $mail, "proveedor@mail.com", teclado: .emailAddress) {
                             if !mail.isEmpty {
-                                Button("✉") { if let u = URL(string: "mailto:" + mail) { openURL(u) } }
+                                Button { if let u = URL(string: "mailto:" + mail) { openURL(u) } } label: { Image(systemName: "envelope") }
                                     .foregroundStyle(.white).padding(.horizontal, 10).padding(.vertical, 6)
                                     .background(T.pp, in: RoundedRectangle(cornerRadius: 6))
                             }
@@ -177,16 +180,16 @@ struct FichaProveedorVista: View {
                         campo("CUIT", $cuit, "30-12345678-9", teclado: .numbersAndPunctuation) { EmptyView() }
                         campo("Dirección", $dir, "Dirección", teclado: .default) { EmptyView() }
                         campo("Nombre", $nombreNuevo, "", teclado: .default) { EmptyView() }
-                        Text("⚠ Cambiar el nombre acá lo cambia en la ficha y en la lista de proveedores. Para cambiarlo también en todas las OC, usá Ajustes → Proveedores guardados → ✏️.")
+                        ic("exclamationmark.triangle", "Cambiar el nombre acá lo cambia en la ficha y en la lista de proveedores. Para cambiarlo también en todas las OC, usá Ajustes → Proveedores guardados → el lápiz.")
                             .font(T.sans(10)).foregroundStyle(T.am)
                         if store.puedeEditar {
-                            Button("💾 Guardar datos de contacto") { guardar() }.buttonStyle(BotonPWA())
+                            Button { guardar() } label: { ic("square.and.arrow.down", "Guardar datos de contacto") }.buttonStyle(BotonPWA())
                         }
                     }
                     .padding(14)
                     .background(T.sf2, in: RoundedRectangle(cornerRadius: 12))
 
-                    Text("📦 ÓRDENES DE COMPRA").font(T.mono(11, .medium)).foregroundStyle(T.bl)
+                    ic("shippingbox", "ÓRDENES DE COMPRA").font(T.mono(11, .medium)).foregroundStyle(T.bl)
                     if ocs.isEmpty { Text("Sin órdenes registradas").font(T.sans(13)).foregroundStyle(T.tx3) }
                     ForEach(ocs) { o in
                         HStack(spacing: 10) {
@@ -207,6 +210,7 @@ struct FichaProveedorVista: View {
             .alert("No se guardó", isPresented: Binding(get: { error != nil }, set: { if !$0 { error = nil } })) {
                 Button("OK", role: .cancel) {}
             } message: { Text(error ?? "") }
+            .vibrarAlError(error)
         }
     }
 

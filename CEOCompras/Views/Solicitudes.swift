@@ -55,7 +55,7 @@ struct DetalleSolicitud: View {
                         if !sol.notas.isEmpty { CajaNotas(texto: sol.notas) }
                         if !sol.comentarioCompras.isEmpty {
                             VStack(alignment: .leading, spacing: 4) {
-                                Text("💬 Compras respondió").font(T.mono(10, .medium)).foregroundStyle(T.bl)
+                                ic("bubble.left", "Compras respondió").font(T.mono(10, .medium)).foregroundStyle(T.bl)
                                 Text(sol.comentarioCompras).font(T.sans(13)).foregroundStyle(T.tx)
                             }
                             .frame(maxWidth: .infinity, alignment: .leading)
@@ -73,7 +73,7 @@ struct DetalleSolicitud: View {
                                 Button {
                                     generarOC()
                                     dismiss()
-                                } label: { Text("📦 Generar OC") }
+                                } label: { ic("shippingbox", "Generar OC") }
                                     .buttonStyle(BotonPWA(tipo: .color(T.gn)))
                                 Button { preguntarArchivar = true } label: { Text("Archivar") }
                                     .buttonStyle(BotonPWA(tipo: .blanco))
@@ -97,6 +97,7 @@ struct DetalleSolicitud: View {
             .alert("No se guardó", isPresented: Binding(get: { error != nil }, set: { if !$0 { error = nil } })) {
                 Button("OK", role: .cancel) {}
             } message: { Text(error ?? "") }
+            .vibrarAlError(error)
         }
     }
 
@@ -122,7 +123,7 @@ struct DetalleSolicitud: View {
 struct CajaNotas: View {
     let texto: String
     var body: some View {
-        Text("📝 " + texto)
+        ic("note.text", texto)
             .font(T.sans(13)).foregroundStyle(T.tx2).lineSpacing(3)
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding(.horizontal, 12).padding(.vertical, 10)

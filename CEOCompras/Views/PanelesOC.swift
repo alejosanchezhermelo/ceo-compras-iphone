@@ -30,8 +30,8 @@ struct PanelObras: View {
                             Text("\(store.ordenes.filter { $0.obra == n }.count)")
                                 .font(T.mono(10)).padding(.horizontal, 5).padding(.vertical, 1)
                                 .background(Color.black.opacity(0.08), in: Capsule())
-                            Button("✏️") { textoRenombre = n; renombre = n }.opacity(0.6)
-                            Button("📦") { preguntarArchivar(n) }.opacity(0.6)
+                            Button { textoRenombre = n; renombre = n } label: { Image(systemName: "pencil") }.opacity(0.6)
+                            Button { preguntarArchivar(n) } label: { Image(systemName: "archivebox") }.opacity(0.6)
                         }
                         .font(T.sans(12)).foregroundStyle(T.bl)
                         .padding(.horizontal, 10).padding(.vertical, 4)
@@ -118,7 +118,7 @@ struct PanelEncargados: View {
                     ForEach(store.encargados, id: \.self) { e in
                         HStack(spacing: 5) {
                             Text(e)
-                            Button("✕") { preguntarEliminar(e) }.opacity(0.6)
+                            Button { preguntarEliminar(e) } label: { Image(systemName: "xmark") }.opacity(0.6)
                         }
                         .font(T.sans(12)).foregroundStyle(T.gn)
                         .padding(.horizontal, 10).padding(.vertical, 4)
@@ -156,6 +156,7 @@ struct PanelEncargados: View {
     }
 
     private func preguntarEliminar(_ e: String) {
+        Vibrar.aviso()
         pregunta = PreguntaPanel(titulo: "¿Eliminar a \"\(e)\" de la lista?", boton: "Eliminar", destructiva: true) {
             trabajando = true
             Task {
@@ -191,6 +192,7 @@ struct AlertasPanel: ViewModifier {
             .alert("No se guardó", isPresented: Binding(get: { error != nil }, set: { if !$0 { error = nil } })) {
                 Button("OK", role: .cancel) {}
             } message: { Text(error ?? "") }
+            .vibrarAlError(error)
     }
 }
 
