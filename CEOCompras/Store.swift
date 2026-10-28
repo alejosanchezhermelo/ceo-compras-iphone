@@ -46,6 +46,9 @@ final class Store {
     /// (pasa con facturas grandes conciliadas en la PC). Se lee de una sola vez al abrir Gastos: NO se escucha en vivo
     /// para no sumar otra conexión fija (ver la lección de la v0.2).
     var conciliaciones: [String: [String: Double]] = [:]
+    /// Compras anteriores a que se cargaran las facturas en la app (`gastosExcel`, v0.23): salen del Excel
+    /// maestro de la oficina y se suman en Gastos como una factura más. Se lee junto con las conciliaciones.
+    var gastosExcel: [GastoExcel] = []
 
     /// Nodos que se leen (dentro de la base real o de la de prueba).
     static let nodos = ["config", "ordenes", "obras", "encargados", "historial", "obrasData", "provData", "proveedores", "solicitudes", "listasPrecios", "rubros"]
@@ -123,6 +126,7 @@ final class Store {
         fichasProveedores = []
         obrasTodas = []
         conciliaciones = [:]
+        gastosExcel = []
         conectado = false
         cargarCache()
         conectar()
@@ -255,6 +259,8 @@ final class Store {
                 if !porOC.isEmpty { c[num] = porOC }
             }
             conciliaciones = c
+        case "gastosExcel":
+            gastosExcel = (a as? [String: Any] ?? [:]).compactMap { GastoExcel(clave: $0.key, $0.value) }
         default:
             break   // obrasData se consulta directo al guardar
         }
@@ -558,6 +564,7 @@ final class Store {
         arboles = obj
         for n in Store.nodos { reconstruir(n, enVivo: false) }
         reconstruir("conciliaciones", enVivo: false)
+        reconstruir("gastosExcel", enVivo: false)
     }
 
     /// Lee las conciliaciones una vez (al abrir Gastos o al deslizar para actualizar).
@@ -566,6 +573,10 @@ final class Store {
         guard let r = try? await Firebase.shared.leerConHuella(prefijo + "conciliaciones"), gen == generacion else { return }
         arboles["conciliaciones"] = r.valor
         reconstruir("conciliaciones", enVivo: true)
+        if let e = try? await Firebase.shared.leerConHuella(prefijo + "gastosExcel"), gen == generacion {
+            arboles["gastosExcel"] = e.valor
+            reconstruir("gastosExcel", enVivo: true)
+        }
         guardarCacheLuego()
     }
 

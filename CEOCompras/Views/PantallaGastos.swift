@@ -19,7 +19,7 @@ struct PantallaGastos: View {
     @State private var anguloElegido: Double?
 
     var body: some View {
-        let datos = Gastos.lista(store.ordenes, store.conciliaciones)
+        let datos = Gastos.lista(store.ordenes, store.conciliaciones, store.gastosExcel)
         let todos = datos.gastos, sinImporte = datos.sinImporte
         let meses = Gastos.meses(todos)
         let periodo: Periodo = {
@@ -56,7 +56,7 @@ struct PantallaGastos: View {
                         Text("Hay \(sinImporte) factura\(sinImporte == 1 ? "" : "s") cargada\(sinImporte == 1 ? "" : "s") sin importe: no se suman.")
                             .font(T.sans(11)).foregroundStyle(T.tx3)
                     }
-                    Text("Cuenta cada factura en el día en que se cargó. Una factura repartida en varias OC suma en cada obra lo que le tocó en la conciliación.")
+                    Text("Cuenta cada factura en el día en que se cargó (las compras de antes de agosto 2026, en la fecha de su OC). Una factura repartida en varias OC suma en cada obra lo que le tocó en la conciliación.")
                         .font(T.sans(11)).foregroundStyle(T.tx3)
                 }
                 .padding(.horizontal, 14).padding(.top, 10).padding(.bottom, 24)
@@ -330,8 +330,13 @@ struct FichaObra: View {
         return f
     }()
 
+    /// Las facturas de otro año llevan el año al lado del día ("16/05/25").
+    static func otroAnio(_ d: Date) -> Bool {
+        !Gastos.calendario.isDate(d, equalTo: Date(), toGranularity: .year)
+    }
+
     var body: some View {
-        let todos = Gastos.lista(store.ordenes, store.conciliaciones).gastos
+        let todos = Gastos.lista(store.ordenes, store.conciliaciones, store.gastosExcel).gastos
         let meses = Gastos.meses(todos)
         let deObra = todos.filter { $0.obraClave == destino.clave }
         let del = Gastos.filtrar(deObra, destino.periodo)
@@ -341,7 +346,7 @@ struct FichaObra: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 10) {
                 totales(del: del, deObra: deObra, titulo: titulo, meses: meses)
-                mesAMes(deObra: deObra, meses: meses)
+                mesAMes(deObra: deObra, meses: Gastos.meses(deObra))
                 proveedores(del)
                 facturas(del)
                 ShareLink(item: Gastos.resumenObra(nombre, delPeriodo: del, acumulado: Gastos.suma(deObra),
@@ -412,6 +417,10 @@ struct FichaObra: View {
             }
             .chartYAxis(.hidden)
             .chartYScale(domain: 0...(maximo * 1.18))
+            // Más de un año de meses: se ven 12 y se desliza de costado (arranca en los últimos).
+            .chartScrollableAxes(puntos.count > 12 ? .horizontal : [])
+            .chartXVisibleDomain(length: min(12, max(1, puntos.count)))
+            .chartScrollPosition(initialX: puntos.count > 12 ? puntos[puntos.count - 12].etiqueta : (puntos.first?.etiqueta ?? ""))
             .chartXAxis {
                 AxisMarks { _ in
                     AxisValueLabel().font(T.mono(10)).foregroundStyle(T.tx3)
@@ -474,6 +483,8 @@ struct FichaObra: View {
             Rotulo(texto: "Facturas (\(orden.count))").padding(.bottom, 4)
             ForEach(orden) { g in
                 Button {
+                    // Las compras del Excel no tienen OC en la app para abrir.
+                    guard !g.deExcel else { return }
                     Vibrar.suave()
                     verOC = IdOC(id: g.ocId)
                 } label: {
@@ -483,7 +494,7 @@ struct FichaObra: View {
                             Spacer(minLength: 6)
                             Text(Gastos.pesos(g.importe)).font(T.mono(12)).foregroundStyle(T.tx)
                         }
-                        Text("Fact. \(g.num) · OC \(g.ocNum) · \(FichaObra.diaMes.string(from: g.fecha))")
+                        Text("Fact. \(g.num) · OC \(g.ocNum) · \(FichaObra.diaMes.string(from: g.fecha))\(FichaObra.otroAnio(g.fecha) ? "/" + String(Gastos.calendario.component(.year, from: g.fecha) % 100) : "")")
                             .font(T.mono(10)).foregroundStyle(T.tx3).lineLimit(1)
                     }
                     .padding(.vertical, 8)

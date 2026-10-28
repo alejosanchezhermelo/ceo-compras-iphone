@@ -16,6 +16,42 @@ struct Gasto: Identifiable, Hashable {
     let proveedor: String
     let importe: Double
     let fecha: Date
+    /// Compra anterior a la app (v0.23, del Excel de la oficina): no tiene OC para abrir.
+    var deExcel = false
+}
+
+/// Una compra del Excel maestro (`gastosExcel/{clave}` = { n: N° de OC, f: "aaaa-mm-dd", o: obra, p: proveedor,
+/// i: importe, fa: N° de factura }). Son las compras de antes de que las facturas se cargaran en la app.
+struct GastoExcel: Hashable {
+    let id: String
+    let ocNum: String
+    let fecha: Date
+    let obra: String
+    let proveedor: String
+    let importe: Double
+    let factura: String
+
+    private static let formato: DateFormatter = {
+        let f = DateFormatter()
+        f.locale = Locale(identifier: "en_US_POSIX")
+        f.timeZone = .current
+        f.dateFormat = "yyyy-MM-dd"
+        return f
+    }()
+
+    init?(clave: String, _ v: Any) {
+        guard let d = v as? [String: Any], let imp = numero(d["i"]), imp != 0,
+              let f = GastoExcel.formato.date(from: texto(d["f"])) else { return nil }
+        let o = texto(d["o"]).trimmingCharacters(in: .whitespaces)
+        guard !o.isEmpty else { return nil }
+        id = clave
+        ocNum = texto(d["n"])
+        fecha = f.addingTimeInterval(12 * 3600)   // mediodía: que no cambie de día por el huso horario
+        obra = o
+        proveedor = texto(d["p"]).trimmingCharacters(in: .whitespaces)
+        importe = imp
+        factura = texto(d["fa"]).trimmingCharacters(in: .whitespaces)
+    }
 }
 
 /// Total de una obra (o de un proveedor) en un período.
@@ -44,7 +80,8 @@ enum Gastos {
 
     /// Todas las facturas con importe y fecha. Las que no tienen importe propio lo buscan en la conciliación
     /// (facturas repartidas en varias OC y conciliadas en la PC). Devuelve también cuántas quedaron afuera por no tener importe.
-    static func lista(_ ordenes: [OC], _ conciliaciones: [String: [String: Double]]) -> (gastos: [Gasto], sinImporte: Int) {
+    static func lista(_ ordenes: [OC], _ conciliaciones: [String: [String: Double]],
+                      _ excel: [GastoExcel] = []) -> (gastos: [Gasto], sinImporte: Int) {
         var nombres: [String: [String: Int]] = [:]   // clave → (forma de escribirla → veces)
         var crudos: [(OC, Int, FacturaOC, Double, Double)] = []
         var sinImporte = 0
@@ -58,6 +95,10 @@ enum Gastos {
                 nombres[claveObra(n), default: [:]][n, default: 0] += 1
             }
         }
+        // Compras del Excel: se saltean las de una OC que ya tiene factura en la app (así no se cuentan dos veces).
+        let conFactura = Set(ordenes.filter { $0.tieneFactura }.map { $0.num.trimmingCharacters(in: .whitespaces) })
+        let excelValidos = excel.filter { $0.ocNum.isEmpty || !conFactura.contains($0.ocNum) }
+        for e in excelValidos { nombres[claveObra(e.obra), default: [:]][e.obra, default: 0] += 1 }
         // Si la misma obra está escrita de varias formas ("obra x" / "Obra X"), se muestra la más usada.
         let mostrar = nombres.mapValues { formas in formas.max { a, b in a.value < b.value }?.key ?? "" }
         let gastos = crudos.map { c -> Gasto in
@@ -69,7 +110,14 @@ enum Gastos {
                                                                                              : oc.proveedor.trimmingCharacters(in: .whitespaces),
                          importe: imp, fecha: Date(timeIntervalSince1970: ts / 1000))
         }
-        return (gastos, sinImporte)
+        let viejos = excelValidos.map { e -> Gasto in
+            let clave = claveObra(e.obra)
+            return Gasto(id: "x-" + e.id, ocId: "", ocNum: e.ocNum, num: e.factura.isEmpty ? "—" : e.factura,
+                         obra: mostrar[clave] ?? e.obra, obraClave: clave,
+                         proveedor: e.proveedor.isEmpty ? "Sin proveedor" : e.proveedor,
+                         importe: e.importe, fecha: e.fecha, deExcel: true)
+        }
+        return (gastos + viejos, sinImporte)
     }
 
     static func nombreObra(_ s: String) -> String {
@@ -161,10 +209,10 @@ enum Gastos {
         }
     }
 
-    /// "Desde agosto 2026, cuando se empezaron a cargar las facturas."
+    /// "Desde julio 2024." (v0.23: incluye las compras del Excel de antes de la app).
     static func aclaracionAcumulado(_ primerMes: Date?) -> String {
         guard let m = primerMes else { return "Todo lo cargado hasta hoy." }
-        return "Desde \(nombreMes(m).lowercased()), cuando se empezaron a cargar las facturas."
+        return "Desde \(nombreMes(m).lowercased())."
     }
 
     private static let formatoFecha: DateFormatter = {
