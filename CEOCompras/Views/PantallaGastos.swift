@@ -6,7 +6,12 @@ import Charts
 struct PantallaGastos: View {
     @Environment(Store.self) private var store
     @State private var mes = Gastos.inicioMes(Date())
-    @State private var verTotal = false
+    /// Por mes / Acumulado / Fechas (desde-hasta, v0.22).
+    @State private var modo: Modo = .mes
+    @State private var desde = Gastos.inicioMes(Gastos.sumarMeses(Date(), -2))
+    @State private var hasta = Date()
+
+    enum Modo: Hashable { case mes, acumulado, fechas }
     /// Dispara las animaciones de entrada (el redondo gira y las barras crecen).
     @State private var aparecio = false
     /// Porción del redondo resaltada (al tocarla o tocar su nombre).
@@ -17,7 +22,13 @@ struct PantallaGastos: View {
         let datos = Gastos.lista(store.ordenes, store.conciliaciones)
         let todos = datos.gastos, sinImporte = datos.sinImporte
         let meses = Gastos.meses(todos)
-        let periodo: Periodo = verTotal ? .total : .mes(mes)
+        let periodo: Periodo = {
+            switch modo {
+            case .mes: return .mes(mes)
+            case .acumulado: return .total
+            case .fechas: return .rango(desde, hasta)
+            }
+        }()
         let titulo = Gastos.titulo(periodo, primerMes: meses.first)
         let del = Gastos.filtrar(todos, periodo)
         let obras = Gastos.porObra(del)
@@ -29,7 +40,7 @@ struct PantallaGastos: View {
                     if store.modoPrueba { FranjaPrueba() }
                     cabecera(todos: todos, del: del, meses: meses, titulo: titulo)
                     if obras.isEmpty {
-                        Text(store.ordenes.isEmpty ? "Cargando…" : "No hay facturas cargadas en \(titulo.lowercased()).")
+                        Text(store.ordenes.isEmpty ? "Cargando…" : "No hay facturas cargadas en este período.")
                             .font(T.sans(13)).foregroundStyle(T.tx3)
                             .frame(maxWidth: .infinity).padding(.vertical, 28)
                             .tarjeta()
@@ -45,7 +56,7 @@ struct PantallaGastos: View {
                         Text("Hay \(sinImporte) factura\(sinImporte == 1 ? "" : "s") cargada\(sinImporte == 1 ? "" : "s") sin importe: no se suman.")
                             .font(T.sans(11)).foregroundStyle(T.tx3)
                     }
-                    Text("Cuenta cada factura en el mes en que se cargó. Una factura repartida en varias OC suma en cada obra lo que le tocó en la conciliación.")
+                    Text("Cuenta cada factura en el día en que se cargó. Una factura repartida en varias OC suma en cada obra lo que le tocó en la conciliación.")
                         .font(T.sans(11)).foregroundStyle(T.tx3)
                 }
                 .padding(.horizontal, 14).padding(.top, 10).padding(.bottom, 24)
@@ -63,7 +74,9 @@ struct PantallaGastos: View {
                 guard !aparecio else { return }
                 withAnimation(.spring(response: 0.7, dampingFraction: 0.82).delay(0.15)) { aparecio = true }
             }
-            .onChange(of: verTotal) { _, _ in Vibrar.seleccion(); resaltada = nil }
+            .onChange(of: modo) { _, _ in Vibrar.seleccion(); resaltada = nil }
+            .onChange(of: desde) { _, _ in resaltada = nil }
+            .onChange(of: hasta) { _, _ in resaltada = nil }
         }
     }
 
@@ -73,17 +86,31 @@ struct PantallaGastos: View {
         let total = Gastos.suma(del)
         let n = del.count
         var detalle = "\(n) factura\(n == 1 ? "" : "s")"
-        if !verTotal, let c = Gastos.comparacion(todos, mes: mes) {
+        if modo == .mes, let c = Gastos.comparacion(todos, mes: mes) {
             detalle += " · \(c.pct >= 0 ? "+" : "")\(c.pct)% \(c.contra)"
         }
         let primero = meses.first ?? mes, ultimo = meses.last ?? mes
         return VStack(alignment: .leading, spacing: 10) {
             HStack {
-                flecha("chevron.left", habilitada: !verTotal && mes > primero) { cambiarMes(-1) }
+                flecha("chevron.left", habilitada: modo == .mes && mes > primero) { cambiarMes(-1) }
                 Spacer()
-                Text(titulo).font(T.syne(16)).foregroundStyle(T.tx)
+                Text(modo == .fechas ? "Por fechas" : titulo).font(T.syne(16)).foregroundStyle(T.tx)
                 Spacer()
-                flecha("chevron.right", habilitada: !verTotal && mes < ultimo) { cambiarMes(1) }
+                flecha("chevron.right", habilitada: modo == .mes && mes < ultimo) { cambiarMes(1) }
+            }
+            if modo == .acumulado {
+                Text(Gastos.aclaracionAcumulado(meses.first))
+                    .font(T.sans(12)).foregroundStyle(T.tx3)
+                    .frame(maxWidth: .infinity)
+                    .multilineTextAlignment(.center)
+            }
+            if modo == .fechas {
+                // Desde / hasta: cada uno no puede pasarse del otro.
+                HStack(spacing: 10) {
+                    selectorFecha("Desde", $desde, rango: Date.distantPast...hasta)
+                    selectorFecha("Hasta", $hasta, rango: desde...Date.distantFuture)
+                }
+                .environment(\.locale, Locale(identifier: "es_AR"))
             }
             Text(Gastos.pesos(total))
                 .font(T.syne(30)).foregroundStyle(T.tx)
@@ -91,9 +118,10 @@ struct PantallaGastos: View {
                 .contentTransition(.numericText(value: aparecio ? total : 0))
                 .animation(.smooth(duration: 0.6), value: total)
             Text(detalle).font(T.sans(13)).foregroundStyle(T.tx2)
-            Picker("Período", selection: $verTotal.animation(.snappy)) {
-                Text("Por mes").tag(false)
-                Text(Gastos.titulo(.total, primerMes: meses.first)).tag(true)
+            Picker("Período", selection: $modo.animation(.snappy)) {
+                Text("Por mes").tag(Modo.mes)
+                Text("Acumulado").tag(Modo.acumulado)
+                Text("Fechas").tag(Modo.fechas)
             }
             .pickerStyle(.segmented)
         }
@@ -109,7 +137,18 @@ struct PantallaGastos: View {
         .buttonStyle(.plain)
         .foregroundStyle(habilitada ? T.bl : T.bd)
         .disabled(!habilitada)
-        .opacity(verTotal ? 0 : 1)
+        .opacity(modo == .mes ? 1 : 0)
+    }
+
+    private func selectorFecha(_ rotulo: String, _ valor: Binding<Date>, rango: ClosedRange<Date>) -> some View {
+        VStack(alignment: .leading, spacing: 3) {
+            Text(rotulo.uppercased()).font(T.mono(9, .medium)).kerning(0.6).foregroundStyle(T.tx3)
+            DatePicker(rotulo, selection: valor.animation(.snappy), in: rango, displayedComponents: .date)
+                .labelsHidden()
+                .datePickerStyle(.compact)
+                .tint(T.bl)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     private func cambiarMes(_ n: Int) {
@@ -141,8 +180,11 @@ struct PantallaGastos: View {
     private func dona(obras: [TotalGasto], total: Double, colores: [String: Color], periodo: Periodo) -> some View {
         let partes = porciones(obras, colores)
         let subtitulo: String = {
-            if case .mes(let m) = periodo { return "EN " + Gastos.nombreMes(m, conAnio: false).uppercased() }
-            return "EN TOTAL"
+            switch periodo {
+            case .mes(let m): return "EN " + Gastos.nombreMes(m, conAnio: false).uppercased()
+            case .total: return "ACUMULADO"
+            case .rango: return "EN EL PERÍODO"
+            }
         }()
         return VStack(alignment: .leading, spacing: 10) {
             Rotulo(texto: "Reparto entre las obras")
@@ -327,10 +369,10 @@ struct FichaObra: View {
             Text(Gastos.pesos(Gastos.suma(del)))
                 .font(T.syne(28)).foregroundStyle(T.tx).lineLimit(1).minimumScaleFactor(0.6)
             Group {
-                if case .mes = destino.periodo {
-                    Text("\(del.count) factura\(del.count == 1 ? "" : "s") · \(Gastos.titulo(.total, primerMes: meses.first)): \(Text(Gastos.pesos(Gastos.suma(deObra))).bold())")
+                if destino.periodo != .total {
+                    Text("\(del.count) factura\(del.count == 1 ? "" : "s") · Acumulado: \(Text(Gastos.pesos(Gastos.suma(deObra))).bold())")
                 } else {
-                    Text("\(del.count) factura\(del.count == 1 ? "" : "s")")
+                    Text("\(del.count) factura\(del.count == 1 ? "" : "s") · \(Gastos.aclaracionAcumulado(meses.first))")
                 }
             }
             .font(T.sans(13)).foregroundStyle(T.tx2)
@@ -348,18 +390,22 @@ struct FichaObra: View {
                      valor: Gastos.suma(Gastos.filtrar(deObra, .mes(m))))
         }
         let maximo = max(puntos.map(\.valor).max() ?? 1, 1)
-        let elegido: Date? = {
-            if case .mes(let m) = destino.periodo { return m }
-            return meses.last
-        }()
+        // Meses resaltados: el elegido, los del rango de fechas, o el último en "Acumulado".
+        let resaltar: (Date) -> Bool = { m in
+            switch destino.periodo {
+            case .mes(let x): return m == x
+            case .total: return m == meses.last
+            case .rango(let d, let h): return m >= Gastos.inicioMes(min(d, h)) && m <= Gastos.inicioMes(max(d, h))
+            }
+        }
         return VStack(alignment: .leading, spacing: 8) {
             Rotulo(texto: "Mes a mes")
             Chart(puntos) { p in
                 BarMark(x: .value("Mes", p.etiqueta), y: .value("Monto", aparecio ? p.valor : 0), width: .ratio(0.55))
                     .cornerRadius(4)
-                    .foregroundStyle(T.bl.opacity(p.id == elegido ? 1 : 0.4))
+                    .foregroundStyle(T.bl.opacity(resaltar(p.id) ? 1 : 0.4))
                     .annotation(position: .top, spacing: 3) {
-                        if p.id == elegido && p.valor > 0 {
+                        if resaltar(p.id) && p.valor > 0 {
                             Text(Gastos.corto(p.valor)).font(T.mono(10, .medium)).foregroundStyle(T.tx2)
                         }
                     }

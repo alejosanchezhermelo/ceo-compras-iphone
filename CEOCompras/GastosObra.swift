@@ -26,10 +26,12 @@ struct TotalGasto: Identifiable, Hashable {
     let cantidad: Int
 }
 
-/// Qué se está mirando: un mes (su primer día) o todo lo cargado.
+/// Qué se está mirando: un mes (su primer día), todo lo cargado (acumulado) o entre dos fechas (v0.22).
 enum Periodo: Hashable {
     case mes(Date)
     case total
+    /// Desde / hasta, los dos días incluidos.
+    case rango(Date, Date)
 }
 
 enum Gastos {
@@ -89,6 +91,10 @@ enum Gastos {
         switch p {
         case .total: return g
         case .mes(let m): return g.filter { calendario.isDate($0.fecha, equalTo: m, toGranularity: .month) }
+        case .rango(let d, let h):
+            let desde = calendario.startOfDay(for: min(d, h))
+            let hasta = calendario.date(byAdding: .day, value: 1, to: calendario.startOfDay(for: max(d, h))) ?? h
+            return g.filter { $0.fecha >= desde && $0.fecha < hasta }
         }
     }
 
@@ -150,9 +156,25 @@ enum Gastos {
     static func titulo(_ p: Periodo, primerMes: Date?) -> String {
         switch p {
         case .mes(let m): return nombreMes(m)
-        case .total: return "Total desde " + (primerMes.map { nombreMes($0, conAnio: false).lowercased() } ?? "el principio")
+        case .total: return "Acumulado"
+        case .rango(let d, let h): return "Del \(fecha(min(d, h))) al \(fecha(max(d, h)))"
         }
     }
+
+    /// "Desde agosto 2026, cuando se empezaron a cargar las facturas."
+    static func aclaracionAcumulado(_ primerMes: Date?) -> String {
+        guard let m = primerMes else { return "Todo lo cargado hasta hoy." }
+        return "Desde \(nombreMes(m).lowercased()), cuando se empezaron a cargar las facturas."
+    }
+
+    private static let formatoFecha: DateFormatter = {
+        let f = DateFormatter()
+        f.locale = Locale(identifier: "es_AR")
+        f.dateFormat = "dd/MM/yyyy"
+        return f
+    }()
+
+    static func fecha(_ d: Date) -> String { formatoFecha.string(from: d) }
 
     private static let enteros: NumberFormatter = {
         let f = NumberFormatter()
@@ -188,7 +210,8 @@ enum Gastos {
     static func resumenObra(_ nombre: String, delPeriodo g: [Gasto], acumulado: Double, titulo: String, primerMes: Date?) -> String {
         var t = "Obra \(nombre) — \(titulo)\nTotal: \(pesos(suma(g))) (\(g.count) facturas)\n"
         if titulo != Gastos.titulo(.total, primerMes: primerMes) {
-            t += "\(Gastos.titulo(.total, primerMes: primerMes)): \(pesos(acumulado))\n"
+            let desde = primerMes.map { " (desde " + nombreMes($0).lowercased() + ")" } ?? ""
+            t += "Acumulado\(desde): \(pesos(acumulado))\n"
         }
         t += "\nPor proveedor:"
         for p in porProveedor(g) { t += "\n• \(p.nombre): \(pesos(p.total))" }
