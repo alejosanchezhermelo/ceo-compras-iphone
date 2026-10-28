@@ -39,6 +39,13 @@ final class Store {
     var aviso: String?
     /// El botón flotante "➕ Nueva OC" (pegado a la barra de abajo) pide abrir el formulario de la pestaña Órdenes.
     var pedirNuevaOC = false
+    /// Ajustes se abre desde el engranaje de arriba a la derecha (v0.21: su pestaña pasó a ser Gastos).
+    var mostrarAjustes = false
+    /// Conciliaciones hechas en la PC (`conciliaciones`): N° de factura → (id de OC → importe que le tocó).
+    /// Sirve para repartir por obra las facturas que se cargaron en varias OC sin el importe de cada una
+    /// (pasa con facturas grandes conciliadas en la PC). Se lee de una sola vez al abrir Gastos: NO se escucha en vivo
+    /// para no sumar otra conexión fija (ver la lección de la v0.2).
+    var conciliaciones: [String: [String: Double]] = [:]
 
     /// Nodos que se leen (dentro de la base real o de la de prueba).
     static let nodos = ["config", "ordenes", "obras", "encargados", "historial", "obrasData", "provData", "proveedores", "solicitudes", "listasPrecios", "rubros"]
@@ -115,6 +122,7 @@ final class Store {
         listasPrecios = []
         fichasProveedores = []
         obrasTodas = []
+        conciliaciones = [:]
         conectado = false
         cargarCache()
         conectar()
@@ -235,6 +243,18 @@ final class Store {
             }.sorted { $0.id < $1.id }   // orden en que se cargaron, como la web
         case "listasPrecios":
             listasPrecios = (a as? [String: Any] ?? [:]).compactMap { ListaPrecios(clave: $0.key, $0.value) }
+        case "conciliaciones":
+            // `sel` = { idDeOC: "12345,67" } (como lo guarda la conciliación de la web)
+            var c: [String: [String: Double]] = [:]
+            for (num, v) in a as? [String: Any] ?? [:] {
+                guard let d = v as? [String: Any], let sel = d["sel"] as? [String: Any] else { continue }
+                var porOC: [String: Double] = [:]
+                for (oc, x) in sel {
+                    if let t = x as? String, let n = Facturas.importe(t) { porOC[oc] = n } else if let n = numero(x) { porOC[oc] = n }
+                }
+                if !porOC.isEmpty { c[num] = porOC }
+            }
+            conciliaciones = c
         default:
             break   // obrasData se consulta directo al guardar
         }
@@ -537,6 +557,16 @@ final class Store {
               let obj = (try? JSONSerialization.jsonObject(with: d)) as? [String: Any] else { return }
         arboles = obj
         for n in Store.nodos { reconstruir(n, enVivo: false) }
+        reconstruir("conciliaciones", enVivo: false)
+    }
+
+    /// Lee las conciliaciones una vez (al abrir Gastos o al deslizar para actualizar).
+    func cargarConciliaciones() async {
+        let gen = generacion
+        guard let r = try? await Firebase.shared.leerConHuella(prefijo + "conciliaciones"), gen == generacion else { return }
+        arboles["conciliaciones"] = r.valor
+        reconstruir("conciliaciones", enVivo: true)
+        guardarCacheLuego()
     }
 
     private func guardarCacheLuego() {

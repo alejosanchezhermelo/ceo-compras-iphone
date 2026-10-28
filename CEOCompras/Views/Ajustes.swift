@@ -4,6 +4,8 @@ import SwiftUI
 /// (numeración, obras, encargados, proveedores guardados, contactos de WhatsApp).
 struct PantallaAjustes: View {
     @Environment(Store.self) private var store
+    /// v0.21: Ajustes se abre como hoja desde el engranaje de arriba (su pestaña pasó a ser Gastos).
+    @Environment(\.dismiss) private var dismiss
     @State private var verCodigo = false
     @State private var proximoNum = ""
     @State private var obraNueva = ""
@@ -59,7 +61,8 @@ struct PantallaAjustes: View {
             .font(T.sans(15))
             .disabled(trabajando)
             .navigationBarTitleDisplayMode(.inline)
-            .conEncabezado()
+            .conEncabezado(ajustes: false)
+            .toolbar { ToolbarItem(placement: .confirmationAction) { Button("Listo") { dismiss() } } }
             .onAppear { proximoNum = String(store.nextOCNum) }
             .onChange(of: store.nextOCNum) { _, n in proximoNum = String(n) }
             .alert(pregunta?.titulo ?? "", isPresented: Binding(get: { pregunta != nil }, set: { if !$0 { pregunta = nil } }),

@@ -119,7 +119,7 @@ struct ContenidoPestanas: View {
     @Environment(\.accessibilityReduceMotion) private var sinMovimiento
 
     private let items: [(String, String)] = [
-        ("ÓRDENES", "shippingbox"), ("ACTIVIDAD", "clock"), ("AJUSTES", "gearshape"),
+        ("ÓRDENES", "shippingbox"), ("ACTIVIDAD", "clock"), ("GASTOS", "chart.bar"),
         ("PRECIOS", "dollarsign.circle"), ("PROVEEDORES", "trophy"), ("FACTURAS", "doc.text.viewfinder"),
     ]
 
@@ -150,6 +150,10 @@ struct ContenidoPestanas: View {
                 }
             }
         }
+        // Ajustes ya no es una pestaña: se abre desde el engranaje de arriba a la derecha (v0.21).
+        .sheet(isPresented: Binding(get: { store.mostrarAjustes }, set: { store.mostrarAjustes = $0 })) {
+            PantallaAjustes()
+        }
         .safeAreaInset(edge: .bottom, spacing: 0) {
             if !tecladoAbierto {
                 // El "➕ Nueva OC" va pegado ARRIBA de la barra (antes flotaba suelto y en iOS 26 quedaba
@@ -169,7 +173,7 @@ struct ContenidoPestanas: View {
         switch i {
         case 0: ListaOC(abrirProveedores: { ir(a: 4) })
         case 1: PantallaActividad()
-        case 2: PantallaAjustes()
+        case 2: PantallaGastos()
         case 3: PantallaPrecios()
         case 4: PantallaProveedores()
         default: PantallaFacturas()

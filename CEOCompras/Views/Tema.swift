@@ -168,21 +168,53 @@ extension View {
 
 /// "Pedidos · COMPRAS" arriba a la izquierda. En iOS 26 el sistema le pone un círculo de vidrio a cada botón
 /// de arriba y lo achicaba hasta dejar solo el ícono (foto de Alejo, 27/10): se le saca ese fondo.
+/// v0.21: a la derecha va el engranaje de Ajustes (su pestaña pasó a ser Gastos), salvo dentro de Ajustes.
 struct ConEncabezado: ViewModifier {
+    var ajustes = true
+
     func body(content: Content) -> some View {
         if #available(iOS 26.0, *) {
-            content.toolbar {
-                ToolbarItem(placement: .topBarLeading) { EncabezadoPedidos().fixedSize() }
-                    .sharedBackgroundVisibility(.hidden)
+            if ajustes {
+                content.toolbar {
+                    ToolbarItem(placement: .topBarLeading) { EncabezadoPedidos().fixedSize() }
+                        .sharedBackgroundVisibility(.hidden)
+                    ToolbarItem(placement: .topBarTrailing) { BotonAjustes() }
+                }
+            } else {
+                content.toolbar {
+                    ToolbarItem(placement: .topBarLeading) { EncabezadoPedidos().fixedSize() }
+                        .sharedBackgroundVisibility(.hidden)
+                }
             }
         } else {
-            content.toolbar { ToolbarItem(placement: .topBarLeading) { EncabezadoPedidos() } }
+            if ajustes {
+                content.toolbar {
+                    ToolbarItem(placement: .topBarLeading) { EncabezadoPedidos() }
+                    ToolbarItem(placement: .topBarTrailing) { BotonAjustes() }
+                }
+            } else {
+                content.toolbar { ToolbarItem(placement: .topBarLeading) { EncabezadoPedidos() } }
+            }
         }
     }
 }
 
+/// El engranaje de arriba a la derecha: abre Ajustes en una hoja.
+struct BotonAjustes: View {
+    @Environment(Store.self) private var store
+    var body: some View {
+        Button {
+            Vibrar.seleccion()
+            store.mostrarAjustes = true
+        } label: {
+            Image(systemName: "gearshape").font(.system(size: 17, weight: .medium)).foregroundStyle(T.bl)
+        }
+        .accessibilityLabel("Ajustes")
+    }
+}
+
 extension View {
-    func conEncabezado() -> some View { modifier(ConEncabezado()) }
+    func conEncabezado(ajustes: Bool = true) -> some View { modifier(ConEncabezado(ajustes: ajustes)) }
 }
 
 // MARK: Vibraciones (v0.19)
