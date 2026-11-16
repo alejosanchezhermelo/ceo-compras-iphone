@@ -13,6 +13,8 @@ struct PantallaFacturas: View {
     @State private var f: EnCurso?
     @State private var textoPDF = ""
     @State private var pdf: Data?
+    /// N° de OC que la factura nombra en su texto y que existen (v0.24). Solo vale si hay PDF.
+    @State private var nombradasPDF: [String] = []
     // entradas
     @State private var camara = false
     @State private var avisoCamara: String?
@@ -28,6 +30,9 @@ struct PantallaFacturas: View {
     @State private var provEscrito = ""
     @State private var preguntaSuma: String?
     @State private var combo: ArchivoPDF?
+    /// v0.24: "Guardar y mandar a administración": el PDF "OC + factura" va directo al menú de compartir.
+    @State private var compartirDirecto: ArchivoPDF?
+    @State private var mandarAlGuardar = false
     @State private var opcionesOC: OC?
     @State private var trabajando = false
     @State private var error: String?
@@ -43,6 +48,8 @@ struct PantallaFacturas: View {
                 VStack(alignment: .leading, spacing: 12) {
                     if store.modoPrueba { FranjaPrueba() }
                     ic("receipt", "Cargar factura").font(T.syne(20)).foregroundStyle(T.bl)
+                    // v0.24: llegaron más PDF mientras hay una factura a medio cargar: esperan su turno
+                    if !enInicio && !store.pdfsEntrantes.isEmpty { cartelEnEspera }
                     switch paso {
                     case .inicio: inicio
                     case .leyendo:
@@ -60,8 +67,11 @@ struct PantallaFacturas: View {
             .scrollDismissesKeyboard(.interactively)
             .navigationBarTitleDisplayMode(.inline)
             .conEncabezado()
-            .fileImporter(isPresented: $elegirPDF, allowedContentTypes: [.pdf]) { leerPDF($0) }
+            .fileImporter(isPresented: $elegirPDF, allowedContentTypes: [.pdf], allowsMultipleSelection: true) { agregarElegidos($0) }
             .onChange(of: foto) { _, item in if let item { leerFoto(item) } }
+            // v0.24: PDF que llegaron desde "Compartir" (o elegidos de a varios): se toma el próximo cuando la pantalla está libre
+            .onChange(of: store.pdfsEntrantes.count, initial: true) { tomarDeLaCola() }
+            .onChange(of: store.fase) { tomarDeLaCola() }
             .fullScreenCover(isPresented: $camara) { camaraVista }
             .fullScreenCover(isPresented: $pistolaAbierta) { PistolaFacturas(cargadas: $tanda) }
             .confirmationDialog("¿Vaciar la lista de esta tanda?", isPresented: $preguntaVaciar, titleVisibility: .visible) {
@@ -69,6 +79,12 @@ struct PantallaFacturas: View {
                 Button("Cancelar", role: .cancel) {}
             } message: { Text("Las facturas quedan guardadas en sus OC; solo se borra esta lista.") }
             .sheet(item: $combo) { VisorPDF(archivo: $0) }
+            .sheet(item: $compartirDirecto) { a in
+                HojaCompartir(items: [a.url], alTerminar: { _, hecho in
+                    if hecho { store.aviso = "✅ Factura guardada y compartida" }
+                })
+                .presentationDetents([.medium, .large])
+            }
             .sheet(item: $opcionesOC) { OpcionesOC(oc: $0) }
             .alert(preguntaSuma ?? "", isPresented: Binding(get: { preguntaSuma != nil }, set: { if !$0 { preguntaSuma = nil } })) {
                 Button("Guardar igual") { grabar() }
@@ -90,6 +106,7 @@ struct PantallaFacturas: View {
                 Text("Pistola").tag(true)
             }
             .pickerStyle(.segmented)
+            if !store.pdfsEntrantes.isEmpty { colaEnInicio }
             if modoPistola { inicioPistola } else { inicioNormal }
         }
     }
@@ -184,7 +201,7 @@ struct PantallaFacturas: View {
                 Button { avisoCamara = nil; camara = true } label: { ic("camera", "Escanear el QR con la cámara").font(T.sans(15, .semibold)) }
                     .buttonStyle(BotonGrande(color: T.bl))
             }
-            Button { elegirPDF = true } label: { ic("doc.text", "Elegir el PDF de la factura").font(T.sans(14, .semibold)) }
+            Button { elegirPDF = true } label: { ic("doc.text", "Elegir el PDF de la factura (uno o varios)").font(T.sans(14, .semibold)) }
                 .buttonStyle(BotonPWA(tipo: .suave(.white, T.bl, T.bl)))
             PhotosPicker(selection: $foto, matching: .images) {
                 ic("photo", "Elegir una captura o foto del QR").font(T.sans(14, .semibold))
@@ -195,7 +212,7 @@ struct PantallaFacturas: View {
             }
             Button { abrirManual(texto: "", avisoQR: false) } label: { ic("square.and.pencil", "Cargar a mano").font(T.sans(13)) }
                 .buttonStyle(BotonPWA(tipo: .blanco))
-            ic("lightbulb", "Si la factura te llegó por WhatsApp o mail, guardá el PDF en Archivos y elegilo con \"Elegir el PDF\": así después podés imprimir la OC y la factura juntas.")
+            ic("lightbulb", "Si la factura te llegó por mail, WhatsApp o Safari: mantené apretado el PDF, tocá Compartir y elegí \"Copiar a CEO Compras\". La app la lee sola y así después podés imprimir la OC y la factura juntas.")
                 .font(T.sans(12)).foregroundStyle(T.tx3)
         }
         .padding(14)
@@ -343,10 +360,14 @@ struct PantallaFacturas: View {
     private func elegirOC(_ f: EnCurso, _ prov: FichaProveedor?) -> some View {
         let lista = store.ocsParaFactura(proveedor: prov, busqueda: busqueda, tildadas: Set(tildadas.keys))
         let n = tildadas.count
+        // v0.24: la única OC tildada es una de las que nombra la factura (la detectó la lectura): hay botón para mandarla a administración
+        let idsNombradas = Set(store.ocsDeNumeros(nombradas).map { $0.id })
+        let porLectura = pdf != nil && n == 1 && tildadas.keys.contains(where: { idsNombradas.contains($0) })
         return VStack(alignment: .leading, spacing: 10) {
             (Text("¿A qué OC corresponde?").foregroundStyle(T.bl).bold()
              + Text(prov.map { " — \($0.nombre)" } ?? "").foregroundStyle(T.tx3))
                 .font(T.sans(13))
+            nombradasVista(f, prov)
             TextField("Buscar OC, obra o proveedor", text: $busqueda).campoPWA()
             VStack(spacing: 0) {
                 if lista.isEmpty {
@@ -366,9 +387,20 @@ struct PantallaFacturas: View {
                     .padding(10).background(T.sf2, in: RoundedRectangle(cornerRadius: 8))
             }
             if store.puedeEditar {
-                Button("Guardar factura en las OC") { guardar(f) }
-                    .buttonStyle(BotonGrande(color: n == 0 ? T.bd : T.bl))
-                    .disabled(n == 0 || trabajando)
+                if porLectura {
+                    Button { mandarAlGuardar = true; guardar(f) } label: {
+                        ic("paperplane.fill", "Guardar y mandar a administración").font(T.sans(15, .semibold))
+                    }
+                    .buttonStyle(BotonGrande(color: T.bl))
+                    .disabled(trabajando)
+                    Button("Guardar factura en las OC") { mandarAlGuardar = false; guardar(f) }
+                        .buttonStyle(BotonPWA(tipo: .suave(.white, T.bl, T.bl)))
+                        .disabled(trabajando)
+                } else {
+                    Button("Guardar factura en las OC") { mandarAlGuardar = false; guardar(f) }
+                        .buttonStyle(BotonGrande(color: n == 0 ? T.bd : T.bl))
+                        .disabled(n == 0 || trabajando)
+                }
             }
             Button("Cancelar") { reiniciar() }.buttonStyle(BotonPWA(tipo: .blanco))
         }
@@ -444,12 +476,19 @@ struct PantallaFacturas: View {
             Text("Cada OC quedó con el N° de factura y su importe.").font(T.sans(12)).foregroundStyle(Color(hex: 0x065F46))
             if pdf != nil, let f {
                 Button { armarCombo(f) } label: { ic("printer", "Imprimir / compartir OC + factura") }.buttonStyle(BotonPWA())
+                tarjetaMensajeAdmin(f)
             }
             // Imprimir cada OC (como "Generar OC" de la ficha), aunque la factura haya entrado sin PDF
             ForEach(store.ordenes.filter { tildadasGuardadas.contains($0.id) }.sorted { $0.numeroEntero < $1.numeroEntero }) { o in
                 Button { generarOC(o) } label: { ic("doc.text", "Imprimir OC \(o.num)") }
                     .buttonStyle(BotonPWA(tipo: .suave(T.blL, T.bl, T.blM)))
                     .disabled(trabajando)
+            }
+            if !store.pdfsEntrantes.isEmpty {
+                Button { siguienteDeLaCola() } label: {
+                    ic("arrow.right.circle.fill", "Siguiente factura (\(store.pdfsEntrantes.count) en espera)").font(T.sans(15, .semibold))
+                }
+                .buttonStyle(BotonGrande(color: T.bl))
             }
             Button { reiniciar() } label: { ic("plus", "Cargar otra factura") }.buttonStyle(BotonPWA(tipo: .blanco))
         }
@@ -458,11 +497,143 @@ struct PantallaFacturas: View {
         .overlay(RoundedRectangle(cornerRadius: 12).stroke(Color(hex: 0xA7F3D0)))
     }
 
+    // MARK: La factura nombra una OC (v0.24)
+
+    private var nombradas: [String] { pdf == nil ? [] : nombradasPDF }
+
+    private enum EstadoNombrada {
+        case tildada                        // quedó tildada: cartel azul
+        case paraTildar                     // es del proveedor y no tiene factura, pero no está tildada (la destildó)
+        case sumar                          // es del proveedor y ya tiene factura: se puede SUMAR esta
+        case preguntarCuit(FichaProveedor)  // el CUIT de la factura no está en el padrón y esa OC es de un proveedor sin CUIT
+        case otroProveedor                  // es de otro proveedor: aviso, sin tildar
+        case sinConfirmar                   // no se pudo confirmar de qué proveedor es la factura: sin tildar
+    }
+
+    private func estadoNombrada(_ o: OC, _ f: EnCurso, _ prov: FichaProveedor?) -> EstadoNombrada {
+        if tildadas[o.id] != nil { return .tildada }
+        if let prov {
+            if !store.esDeProveedor(o, prov) { return .otroProveedor }
+            return o.tieneFactura ? .sumar : .paraTildar
+        }
+        // El CUIT de la factura no está en el padrón (o la factura no trae CUIT).
+        guard !f.cuit.isEmpty, let fp = store.fichaProveedor(o) else { return .sinConfirmar }
+        if !fp.cuit.isEmpty { return .otroProveedor }   // esa OC es de un proveedor que ya tiene OTRO CUIT
+        guard !o.tieneFactura, store.puedeEditar,
+              let ficha = store.fichasProveedores.first(where: { $0.id == fp.id }) else { return .sinConfirmar }
+        return .preguntarCuit(ficha)
+    }
+
+    /// Las OC que nombra la factura, arriba de la lista: con la obra y el proveedor bien a la vista.
+    @ViewBuilder private func nombradasVista(_ f: EnCurso, _ prov: FichaProveedor?) -> some View {
+        let ocs = store.ocsDeNumeros(nombradas)
+        if !ocs.isEmpty {
+            VStack(alignment: .leading, spacing: 8) {
+                ForEach(ocs) { o in lineaNombrada(o, f, prov) }
+            }
+        }
+    }
+
+    @ViewBuilder private func lineaNombrada(_ o: OC, _ f: EnCurso, _ prov: FichaProveedor?) -> some View {
+        switch estadoNombrada(o, f, prov) {
+        case .tildada:
+            cajaNombrada(azul: true) {
+                textoNombra(o, "  →  la tildé. Revisá antes de guardar.")
+            }
+        case .paraTildar:
+            cajaNombrada(azul: true) {
+                textoNombra(o, ". Todavía no tiene factura.")
+                Button("Tildar la OC \(o.num)") { tildar(o.id, true, f) }
+                    .buttonStyle(BotonPWA(tipo: .suave(.white, T.bl, T.bl))).disabled(trabajando)
+            }
+        case .sumar:
+            cajaNombrada(azul: false) {
+                textoNombra(o, ". Esa OC ya tiene la factura \(o.facturaPrincipal?.num ?? "cargada"). ¿Esta es otra factura de la misma OC?")
+                if !tildadas.isEmpty {
+                    Text("Para sumarla a esta OC, primero destildá las otras OC de la lista: la factura entera se suma a una sola.")
+                        .font(T.sans(12, .semibold))
+                }
+                Button("Sumar esta factura a la OC \(o.num)") { sumarEn(o, f) }
+                    .buttonStyle(BotonPWA(tipo: .suave(.white, T.bl, T.bl)))
+                    .disabled(trabajando || !store.puedeEditar || !tildadas.isEmpty)
+            }
+        case .preguntarCuit(let ficha):
+            cajaNombrada(azul: false) {
+                textoNombra(o, ". El CUIT de la factura (\(Facturas.fmtCuit(f.cuit))) no está en tu padrón, así que no la tildé. ¿Es de \(ficha.nombre)?")
+                Button("Sí, tildar y anotar el CUIT") { vincularYTildar(o, ficha, f) }
+                    .buttonStyle(BotonPWA(tipo: .suave(.white, T.bl, T.bl))).disabled(trabajando)
+            }
+        case .otroProveedor:
+            cajaNombrada(azul: false) {
+                textoNombra(o, ", pero esa OC es de un proveedor distinto al de esta factura. No la tildé. Si igual es esa, buscala abajo por número y tildala.")
+            }
+        case .sinConfirmar:
+            cajaNombrada(azul: false) {
+                textoNombra(o, ", pero no pude confirmar de qué proveedor es la factura, así que no la tildé. Si es esa, tildala abajo.")
+            }
+        }
+    }
+
+    /// Caja azul (la OC quedó tildada) o ámbar (hay que mirar algo).
+    private func cajaNombrada<C: View>(azul: Bool, @ViewBuilder _ contenido: () -> C) -> some View {
+        VStack(alignment: .leading, spacing: 8) { contenido() }
+            .font(T.sans(13))
+            .foregroundStyle(azul ? T.bl : Color(hex: 0x92400E))
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(10)
+            .background(azul ? T.blL : Color(hex: 0xFEF3C7), in: RoundedRectangle(cornerRadius: 8))
+            .overlay(RoundedRectangle(cornerRadius: 8).stroke(azul ? T.blM : Color(hex: 0xFCD34D)))
+    }
+
+    /// "La factura nombra la OC 1580 · Obra · Proveedor" + el resto; la obra y el proveedor van en negrita.
+    private func textoNombra(_ o: OC, _ cola: String) -> Text {
+        var t = Text("La factura nombra la ")
+        t = t + Text("OC \(o.num)").bold()
+        t = t + Text(" · ")
+        t = t + Text(o.obra.isEmpty ? "sin obra" : o.obra).bold()
+        t = t + Text(" · ")
+        t = t + Text(o.proveedor.isEmpty ? "sin proveedor" : o.proveedor).bold()
+        t = t + Text(cola)
+        return t
+    }
+
+    /// La OC que nombra la factura ya tiene otra factura: se SUMA esta (igual que el modo pistola; nunca pisa la anterior).
+    private func sumarEn(_ o: OC, _ f: EnCurso) {
+        guard store.puedeEditar, !trabajando, tildadas.isEmpty else { return }
+        trabajando = true
+        Task {
+            let r = await store.guardarFacturaPistola(o, num: f.num, total: f.total, cuit: f.cuit)
+            trabajando = false
+            if let e = r.error { error = e; return }
+            store.aviso = "✅ Factura sumada a la OC \(o.num)"
+            tildadas = [:]
+            importesAGuardar = [o.id: f.total]
+            tildadasGuardadas = [o.id]
+            paso = .guardada(1)
+            if pdf != nil { armarCombo(f) }
+        }
+    }
+
+    /// "Sí, tildar y anotar el CUIT": se le anota el CUIT al proveedor de la OC (camino de "vincular") y se tilda la OC.
+    private func vincularYTildar(_ o: OC, _ p: FichaProveedor, _ f: EnCurso) {
+        guard !trabajando else { return }
+        trabajando = true
+        Task {
+            let e = await store.vincularCuit(p, cuit: f.cuit)
+            trabajando = false
+            if let e { error = e; return }
+            store.aviso = "✅ CUIT vinculado a \(p.nombre)"
+            tildar(o.id, true, f)
+        }
+    }
+
     // MARK: Acciones
 
     private func reiniciar() {
         paso = .inicio; f = nil; pdf = nil; textoPDF = ""; tildadas = [:]; busqueda = ""; provEscrito = ""; foto = nil
         tildadasGuardadas = []
+        nombradasPDF = []
+        mandarAlGuardar = false
     }
 
     private func recibirDeCamara(_ leido: String) {
@@ -481,15 +652,81 @@ struct PantallaFacturas: View {
         }
     }
 
-    private func leerPDF(_ r: Result<URL, Error>) {
-        guard case .success(let url) = r else { return }
-        let acceso = url.startAccessingSecurityScopedResource()
-        defer { if acceso { url.stopAccessingSecurityScopedResource() } }
-        guard let datos = try? Data(contentsOf: url) else { paso = .aviso("No se pudo abrir el archivo."); return }
+    // MARK: Cola de PDF (v0.24)
+
+    private var enInicio: Bool {
+        if case .inicio = paso { return true }
+        return false
+    }
+
+    private var cartelEnEspera: some View {
+        let n = store.pdfsEntrantes.count
+        return ic("tray.full", "Hay \(n) factura\(n == 1 ? "" : "s") en espera. Cuando termines con esta, sigue la próxima.")
+            .font(T.sans(12, .semibold)).foregroundStyle(T.bl)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.horizontal, 10).padding(.vertical, 8)
+            .background(T.blL, in: RoundedRectangle(cornerRadius: 8))
+    }
+
+    /// En el inicio con PDF esperando (no se tomaron solos, p. ej. porque se cerró algo recién): botón para seguir.
+    private var colaEnInicio: some View {
+        let n = store.pdfsEntrantes.count
+        return VStack(alignment: .leading, spacing: 8) {
+            ic("tray.full", "Hay \(n) factura\(n == 1 ? "" : "s") en espera").font(T.sans(14, .bold)).foregroundStyle(T.bl)
+            Button { tomarDeLaCola() } label: { ic("arrow.right.circle.fill", "Leer la siguiente").font(T.sans(15, .semibold)) }
+                .buttonStyle(BotonGrande(color: T.bl))
+        }
+        .padding(14)
+        .background(T.blL, in: RoundedRectangle(cornerRadius: 12))
+        .overlay(RoundedRectangle(cornerRadius: 12).stroke(T.blM))
+    }
+
+    /// Toma el próximo PDF de la cola y lo lee, solo si la pantalla está libre (una factura a medio cargar NO se pisa:
+    /// arriba avisa "Hay N en espera") y la app no está bloqueada con Face ID.
+    private func tomarDeLaCola() {
+        guard store.fase == .adentro, !store.pdfsEntrantes.isEmpty, enInicio else { return }
+        camara = false; pistolaAbierta = false; elegirPDF = false   // si había algo abierto encima, se cierra
+        let siguiente = store.pdfsEntrantes.removeFirst()
+        procesarPDF(siguiente.datos)
+    }
+
+    /// Desde la pantalla "guardada": vuelve al inicio y sigue con la próxima de la cola.
+    private func siguienteDeLaCola() {
+        reiniciar()
+        tomarDeLaCola()
+    }
+
+    /// El selector de Archivos (ahora de a varios): todo va a la misma cola.
+    private func agregarElegidos(_ r: Result<[URL], Error>) {
+        guard case .success(let urls) = r, !urls.isEmpty else { return }
+        var leidos = 0
+        for url in urls {
+            let acceso = url.startAccessingSecurityScopedResource()
+            defer { if acceso { url.stopAccessingSecurityScopedResource() } }
+            guard let datos = try? Data(contentsOf: url) else { continue }
+            if store.encolarPDF(datos, nombre: url.deletingPathExtension().lastPathComponent) { leidos += 1 }
+        }
+        if leidos == 0 { paso = .aviso("No se pudo abrir el archivo.") }
+    }
+
+    /// Lee el PDF de una factura (QR de AFIP + texto). Antes era `leerPDF`, que leía el archivo elegido.
+    private func procesarPDF(_ datos: Data) {
         paso = .leyendo
+        let validos = store.numerosDeOC()
         Task {
             let res = await Task.detached(priority: .userInitiated) { LectorQR.leerPDF(datos) }.value
+            // v0.24: ¿la factura dice a qué OC corresponde? (texto del PDF y, si ahí no aparece, la hoja leída como imagen)
+            var nombradas: [String] = []
+            var hayPDFValido = true
+            if case .noEsAfip = res { hayPDFValido = false }
+            if hayPDFValido {
+                let texto = res.textoDelPDF
+                nombradas = await Task.detached(priority: .userInitiated) {
+                    LectorQR.ocsNombradasEn(datos, texto: texto, validos: validos)
+                }.value
+            }
             pdf = datos
+            nombradasPDF = nombradas
             switch res {
             case .ok(let d, let t):
                 textoPDF = t
@@ -543,7 +780,17 @@ struct PantallaFacturas: View {
         tildadas = [:]
         busqueda = ""
         provEscrito = ""
+        // v0.24: la factura nombra una OC: si es del proveedor y todavía no tiene factura, queda tildada (y se avisa arriba).
+        // Si el proveedor no se conoce, o la OC es de otro, NO se tilda nada: arriba se explica por qué.
+        if pdf != nil, let prov = store.proveedorPorCuit(e.cuit) {
+            let aTildar = store.ocsDeNumeros(nombradasPDF).filter { !$0.tieneFactura && store.esDeProveedor($0, prov) }
+            for o in aTildar { tildadas[o.id] = aTildar.count == 1 ? textoImporte(e.total) : "" }
+        }
         paso = .flujo
+    }
+
+    private func textoImporte(_ n: Double) -> String {
+        String(format: "%.2f", n).replacingOccurrences(of: ".", with: ",")
     }
 
     private func abrirManual(texto: String, avisoQR: Bool) {
@@ -574,6 +821,7 @@ struct PantallaFacturas: View {
     @State private var importesAGuardar: [String: Double] = [:]
 
     private func guardar(_ f: EnCurso) {
+        guard !trabajando else { return }   // un segundo toque no guarda dos veces
         let ids = Array(tildadas.keys)
         if ids.isEmpty { error = "Tildá al menos una OC"; return }
         var imp: [String: Double] = [:]
@@ -592,30 +840,83 @@ struct PantallaFacturas: View {
     }
 
     private func grabar() {
-        guard let f else { return }
+        guard let f, !trabajando else { return }
         let imp = importesAGuardar
+        let mandar = mandarAlGuardar
+        mandarAlGuardar = false
         trabajando = true
         Task {
-            let e = await store.guardarFacturaQR(num: f.num, total: f.total, cuit: f.cuit, importes: imp)
+            // v0.24: antes de escribir se mira en la base si alguna OC ya tiene factura (la copia en memoria puede venir atrasada)
+            let e = await store.guardarFacturaSinPisar(num: f.num, total: f.total, cuit: f.cuit, importes: imp)
             trabajando = false
             if let e { error = e; return }
             store.aviso = "✅ Factura asociada a \(imp.count) OC"
             tildadasGuardadas = Array(imp.keys)
             paso = .guardada(imp.count)
-            // Como al cargar la factura desde la ficha: con una sola OC, se abre para imprimir
-            if imp.count == 1, let id = imp.keys.first, let o = store.ordenes.first(where: { $0.id == id }) {
-                generarOC(o)
+            if imp.count == 1 {
+                if pdf != nil {
+                    // v0.24: con el PDF de la factura se abre directo "OC + factura" con el mensaje para administración
+                    // (o, con "Guardar y mandar a administración", directo el menú de compartir)
+                    armarCombo(f, compartirYa: mandar)
+                } else if let id = imp.keys.first, let o = store.ordenes.first(where: { $0.id == id }) {
+                    // Sin PDF (cámara, foto, a mano): como al cargar la factura desde la ficha, se abre la OC para imprimir
+                    generarOC(o)
+                }
             }
         }
     }
 
-    private func armarCombo(_ f: EnCurso) {
-        guard let pdf else { return }
+    /// Las OC de esta factura (las tildadas o, ya guardada, las guardadas), por número.
+    private func ocsDeLaFactura() -> [OC] {
         let ids = tildadas.isEmpty ? tildadasGuardadas : Array(tildadas.keys)
-        let ocs = store.ordenes.filter { ids.contains($0.id) }.sorted { $0.numeroEntero < $1.numeroEntero }
+        return store.ordenes.filter { ids.contains($0.id) }.sorted { $0.numeroEntero < $1.numeroEntero }
+    }
+
+    /// Texto para administración: obra a imputar, proveedor, factura y OC (`Facturas.mensajeAdmin`).
+    private func mensajeParaAdmin(_ f: EnCurso, _ ocs: [OC]) -> String {
+        let prov = store.proveedorPorCuit(f.cuit)
+        let datos = ocs.map { o in
+            Facturas.OCParaMensaje(num: o.num, obra: o.obra,
+                                   importe: ocs.count > 1 ? Facturas.importe(tildadas[o.id] ?? "") : f.total)
+        }
+        return Facturas.mensajeAdmin(factura: f.num, total: f.total, proveedor: prov?.nombre ?? ocs.first?.proveedor ?? "",
+                                     cuit: f.cuit, ocs: datos)
+    }
+
+    /// El mensaje a la vista (por si hay que pegarlo de nuevo) y un botón para copiarlo.
+    private func tarjetaMensajeAdmin(_ f: EnCurso) -> some View {
+        let msg = mensajeParaAdmin(f, ocsDeLaFactura())
+        return VStack(alignment: .leading, spacing: 6) {
+            Rotulo(texto: "Mensaje para administración")
+            Text(msg).font(T.mono(12)).foregroundStyle(T.tx)
+                .frame(maxWidth: .infinity, alignment: .leading)
+            Button {
+                UIPasteboard.general.string = msg
+                store.aviso = "✅ Mensaje copiado: pegalo en WhatsApp"
+            } label: { ic("doc.on.doc", "Copiar el mensaje") }
+                .buttonStyle(BotonPWA(tipo: .blanco))
+        }
+        .padding(10)
+        .background(Color.white, in: RoundedRectangle(cornerRadius: 8))
+        .overlay(RoundedRectangle(cornerRadius: 8).stroke(T.bd))
+    }
+
+    /// Arma el PDF "OC + factura" (con el mensaje para administración). `compartirYa`: lo manda directo al menú de
+    /// compartir y deja el mensaje copiado (para pegarlo en WhatsApp); si no, se abre el visor.
+    private func armarCombo(_ f: EnCurso, compartirYa: Bool = false) {
+        guard let pdf else { return }
+        let ocs = ocsDeLaFactura()
         do {
             let url = try PDFOC.combinado(ocs: ocs, factura: pdf, nombre: "OC + factura \(f.num)")
-            combo = ArchivoPDF(url: url, titulo: "OC + factura \(f.num)")
+            let mensaje = mensajeParaAdmin(f, ocs)
+            let archivo = ArchivoPDF(url: url, titulo: "OC + factura \(f.num)", mensaje: mensaje)
+            if compartirYa {
+                UIPasteboard.general.string = mensaje
+                store.aviso = "✅ Mensaje copiado: pegalo en WhatsApp"
+                compartirDirecto = archivo
+            } else {
+                combo = archivo
+            }
         } catch {
             self.error = "No se pudo armar el PDF"
         }

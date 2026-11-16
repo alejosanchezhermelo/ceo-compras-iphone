@@ -144,13 +144,21 @@ struct ArchivoPDF: Identifiable {
     let id = UUID()
     let url: URL
     let titulo: String
+    /// Texto para administración (v0.24): si viene, el visor muestra "Mandar a administración".
+    var mensaje: String? = nil
 }
 
 /// Hoja de "Compartir" de iOS (WhatsApp, Mail, guardar en Archivos, etc.).
 struct HojaCompartir: UIViewControllerRepresentable {
     let items: [Any]
+    /// v0.24: avisa cuando se cierra la hoja (nombre de la actividad elegida y si se completó).
+    var alTerminar: ((String?, Bool) -> Void)? = nil
     func makeUIViewController(context: Context) -> UIActivityViewController {
-        UIActivityViewController(activityItems: items, applicationActivities: nil)
+        let c = UIActivityViewController(activityItems: items, applicationActivities: nil)
+        if let alTerminar {
+            c.completionWithItemsHandler = { tipo, completado, _, _ in alTerminar(tipo?.rawValue, completado) }
+        }
+        return c
     }
     func updateUIViewController(_ c: UIActivityViewController, context: Context) {}
 }
@@ -170,11 +178,18 @@ struct VistaPDFKit: UIViewRepresentable {
 struct VisorPDF: View {
     let archivo: ArchivoPDF
     @Environment(\.dismiss) private var dismiss
+    @State private var copiado = false
+    @State private var compartir = false
 
     var body: some View {
+        // Con el botón de administración abajo, el PDF no se mete debajo de él
+        let bordes: Edge.Set = archivo.mensaje == nil ? .bottom : []
         NavigationStack {
-            VistaPDFKit(url: archivo.url)
-                .ignoresSafeArea(edges: .bottom)
+            VStack(spacing: 0) {
+                VistaPDFKit(url: archivo.url)
+                    .ignoresSafeArea(edges: bordes)
+                if let m = archivo.mensaje { barraAdmin(m) }
+            }
                 .navigationTitle(archivo.titulo)
                 .navigationBarTitleDisplayMode(.inline)
                 .toolbar {
@@ -187,6 +202,27 @@ struct VisorPDF: View {
                     }
                 }
         }
+        .sheet(isPresented: $compartir) {
+            HojaCompartir(items: [archivo.url]).presentationDetents([.medium, .large])
+        }
+    }
+
+    /// "Mandar a administración": copia el mensaje y abre el menú de compartir con el PDF (WhatsApp → administración → pegar).
+    private func barraAdmin(_ mensaje: String) -> some View {
+        VStack(spacing: 6) {
+            if copiado {
+                ic("checkmark.circle.fill", "Mensaje copiado: pegalo en WhatsApp").font(T.sans(12, .semibold)).foregroundStyle(T.gn)
+            }
+            Button {
+                UIPasteboard.general.string = mensaje
+                copiado = true
+                compartir = true
+            } label: { ic("paperplane.fill", "Mandar a administración").font(T.sans(15, .semibold)) }
+                .buttonStyle(BotonGrande(color: T.bl))
+        }
+        .padding(.horizontal, 14).padding(.vertical, 10)
+        .frame(maxWidth: .infinity)
+        .background(T.sf)
     }
 
     private func imprimir(_ a: ArchivoPDF) {

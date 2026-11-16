@@ -49,6 +49,12 @@ final class Store {
     /// Compras anteriores a que se cargaran las facturas en la app (`gastosExcel`, v0.23): salen del Excel
     /// maestro de la oficina y se suman en Gastos como una factura más. Se lee junto con las conciliaciones.
     var gastosExcel: [GastoExcel] = []
+    /// Facturas en PDF que esperan su turno en la pestaña Facturas (v0.24): las que llegan desde "Compartir" de
+    /// otra app y las que se eligen de a varias en Archivos. La pantalla toma la primera cuando está libre.
+    var pdfsEntrantes: [PDFEntrante] = []
+    /// Cuántos PDF llegaron desde otra app (solo sube). La barra de pestañas lo mira para saltar a Facturas: no se puede
+    /// mirar el largo de la cola porque la pantalla de Facturas ya puede haberla vaciado antes de que la barra se entere.
+    var pdfsRecibidos = 0
 
     /// Nodos que se leen (dentro de la base real o de la de prueba).
     static let nodos = ["config", "ordenes", "obras", "encargados", "historial", "obrasData", "provData", "proveedores", "solicitudes", "listasPrecios", "rubros"]

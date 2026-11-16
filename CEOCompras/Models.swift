@@ -341,6 +341,13 @@ struct ObraItem: Identifiable, Hashable {
 }
 
 
+/// Un PDF que llegó para cargar como factura (desde "Compartir" de otra app, o elegido de Archivos) y espera su turno.
+struct PDFEntrante: Identifiable {
+    let id = UUID()
+    let nombre: String
+    let datos: Data
+}
+
 /// Un rubro de la web (`rubros/{id}`: nombre y color "#RRGGBB").
 struct Rubro: Identifiable, Hashable {
     let id: String

@@ -8,8 +8,8 @@ options:
 settings:
   base:
     SWIFT_VERSION: "5.0"
-    MARKETING_VERSION: "0.23"
-    CURRENT_PROJECT_VERSION: "23"
+    MARKETING_VERSION: "0.24"
+    CURRENT_PROJECT_VERSION: "24"
     TARGETED_DEVICE_FAMILY: "1"
     CODE_SIGN_STYLE: Manual
     DEVELOPMENT_TEAM: ""
@@ -42,6 +42,15 @@ targets:
         NSCameraUsageDescription: Para leer el QR de AFIP de las facturas.
         NSFaceIDUsageDescription: Para entrar a la app con tu cara, sin escribir la contraseña.
         ITSAppUsesNonExemptEncryption: false
+        # v0.24: aparece en "Compartir" de los PDF (Mail, WhatsApp, Safari) como "Copiar a CEO Compras".
+        # false = iOS entrega una COPIA en la carpeta Inbox de la app (no hace falta extensión ni otro App ID).
+        CFBundleDocumentTypes:
+          - CFBundleTypeName: PDF
+            CFBundleTypeRole: Viewer
+            LSHandlerRank: Alternate
+            LSItemContentTypes:
+              - com.adobe.pdf
+        LSSupportsOpeningDocumentsInPlace: false
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.alejosanchez.ceocompras

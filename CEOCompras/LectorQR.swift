@@ -156,6 +156,74 @@ enum LectorQR {
         }
         return evaluar(codigos, texto: texto)
     }
+
+    // MARK: ¿A qué OC dice la factura que corresponde? (v0.24)
+
+    /// Números de OC que nombra la factura y que EXISTEN (`validos` = N° y N° de PDF de las OC, sin ceros adelante).
+    /// Primero se mira el texto del PDF; si ahí no aparece ninguna OC que exista, se lee la hoja como imagen.
+    /// Hay que correrla fuera del hilo principal (el reconocimiento de texto tarda un par de segundos).
+    static func ocsNombradasEn(_ datos: Data, texto: String, validos: Set<String>) -> [String] {
+        let directas = Facturas.ocsNombradas(texto).filter { validos.contains($0) }
+        if !directas.isEmpty { return directas }
+        return Facturas.ocsNombradas(textoVisible(datos)).filter { validos.contains($0) }
+    }
+
+    /// El PDF de una factura que sale de un driver de impresión puede traer el texto en un orden interno desparejo:
+    /// "Orden de Compra:" y su número quedan lejísimos en `page.string` aunque en la hoja se vean juntos.
+    /// Por eso se LEE la hoja como imagen (reconocimiento de texto de Vision) en las primeras páginas.
+    static func textoVisible(_ datos: Data, paginas maximo: Int = 2) -> String {
+        guard let doc = PDFDocumentLector.abrir(datos) else { return "" }
+        var leidas: [String] = []
+        for i in 0..<min(doc.pageCount, maximo) {
+            guard let pag = doc.page(at: i) else { continue }
+            let caja = pag.bounds(for: .mediaBox)
+            let tam = CGSize(width: caja.width * 3, height: caja.height * 3)
+            if tam.width * tam.height > 30_000_000 { continue }
+            let img = pag.thumbnail(of: tam, for: .mediaBox)
+            if let cg = img.cgImage { leidas.append(renglones(en: cg)) }
+        }
+        return leidas.joined(separator: "\n")
+    }
+
+    /// Reconoce el texto de una imagen y lo arma en renglones POR POSICIÓN: se agrupa por altura (`midY`)
+    /// y cada renglón se ordena de izquierda a derecha (`minX`).
+    static func renglones(en imagen: CGImage) -> String {
+        let req = VNRecognizeTextRequest()
+        req.recognitionLevel = .accurate
+        req.recognitionLanguages = ["es-ES"]
+        try? VNImageRequestHandler(cgImage: imagen, options: [:]).perform([req])
+
+        struct Trozo { let texto: String; let x: CGFloat; let y: CGFloat; let alto: CGFloat }
+        var trozos: [Trozo] = []
+        for o in (req.results as? [VNRecognizedTextObservation]) ?? [] {
+            guard let t = o.topCandidates(1).first?.string, !t.isEmpty else { continue }
+            let b = o.boundingBox
+            trozos.append(Trozo(texto: t, x: b.minX, y: b.midY, alto: b.height))
+        }
+        // Vision mide desde ABAJO (y = 0 es el pie de la hoja): de arriba hacia abajo = y de mayor a menor.
+        trozos.sort { $0.y > $1.y }
+        var lineas: [[Trozo]] = []
+        for t in trozos {
+            if let primero = lineas.last?.first, abs(primero.y - t.y) <= 0.5 * min(primero.alto, t.alto) {
+                lineas[lineas.count - 1].append(t)
+            } else {
+                lineas.append([t])
+            }
+        }
+        return lineas.map { linea in
+            linea.sorted { $0.x < $1.x }.map { $0.texto }.joined(separator: " ")
+        }.joined(separator: "\n")
+    }
+}
+
+extension LectorQR.Resultado {
+    /// El texto del PDF que viene con el resultado ("" si no hay).
+    var textoDelPDF: String {
+        switch self {
+        case .ok(_, let t), .qrInvalido(let t), .sinQR(let t): return t
+        case .noEsAfip: return ""
+        }
+    }
 }
 
 /// Cámara que busca el QR en vivo (VisionKit). Avisa cada QR leído; la pantalla decide si sirve.

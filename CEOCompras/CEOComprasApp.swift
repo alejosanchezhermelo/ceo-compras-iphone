@@ -41,6 +41,8 @@ struct CEOComprasApp: App {
                 .environment(store)
                 .tint(T.bl)
                 .preferredColorScheme(.light)   // la PWA no tiene modo oscuro
+                // v0.24: un PDF que llega desde "Compartir" de otra app queda en la cola de la pestaña Facturas.
+                .onOpenURL { store.recibirArchivo($0) }
         }
         .onChange(of: escena) { _, nueva in store.cambioDeEscena(nueva) }
     }
@@ -113,6 +115,8 @@ struct ContenidoPestanas: View {
     @Environment(Store.self) private var store
     @State private var pestana = 0
     @State private var visitadas: Set<Int> = [0]
+    /// Cuántos de los PDF recibidos (`store.pdfsRecibidos`) ya llevaron a Facturas.
+    @State private var recibidosAtendidos = 0
     /// Cuántas veces se tocó cada pestaña (cada toque hace "saltar" su ícono).
     @State private var toques = [Int](repeating: 0, count: 6)
     @Namespace private var pastilla
@@ -130,6 +134,17 @@ struct ContenidoPestanas: View {
         GeometryReader { g in
             pestanas(tecladoAbierto: g.safeAreaInsets.bottom > 120)
         }
+        // v0.24: si llega un PDF para cargar (desde "Compartir" de otra app), se va a Facturas.
+        // Si la app está bloqueada la cola espera: al entrar (cambia `fase`) se procesa.
+        .onChange(of: store.pdfsRecibidos, initial: true) { irAFacturasSiLlegoPDF() }
+        .onChange(of: store.fase) { irAFacturasSiLlegoPDF() }
+    }
+
+    /// Salta a Facturas una vez por cada PDF recibido (aunque la pantalla de Facturas ya lo haya tomado de la cola).
+    private func irAFacturasSiLlegoPDF() {
+        guard store.fase == .adentro, store.pdfsRecibidos != recibidosAtendidos else { return }
+        recibidosAtendidos = store.pdfsRecibidos
+        ir(a: 5)
     }
 
     /// Las 6 pantallas quedan armadas una encima de otra y la barra elige cuál se ve.

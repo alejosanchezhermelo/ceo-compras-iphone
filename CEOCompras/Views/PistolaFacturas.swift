@@ -377,8 +377,8 @@ extension Store {
     }
 
     /// Lee la OC de la base EN ESE MOMENTO (la copia en memoria puede venir atrasada unos segundos:
-    /// así se pisó la 0028-00112426 de la OC 1572 el 26/10).
-    private func facturasEnLaBase(_ o: OC) async throws -> [FacturaOC] {
+    /// así se pisó una factura el 26/10). También la usa la carga normal de facturas (v0.24).
+    func facturasEnLaBase(_ o: OC) async throws -> [FacturaOC] {
         let (v, _) = try await Firebase.shared.leerConHuella(prefijo + "ordenes/\(o.id)")
         return (v as? [String: Any]).map { Store.facturasDe($0) } ?? []
     }
